@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.7)
+project(socket)
+find_package(OpenCV 3.2 REQUIRED NO_DEFAULT_PATH PATHS "/usr/local")
+find_package(Eigen3 REQUIRED)
+set(CMAKE_CXX_STANDARD 11)
+add_definitions(-Wall)
+
+include_directories(${EIGEN3_INCLUDE_DIR})
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+set(SOURCE_FILES main.cpp Communication.cpp Communication.h)
+set(LIBS ${OpenCV_LIBS})
+add_executable(socket ${SOURCE_FILES})
+target_link_libraries(socket ${LIBS})
