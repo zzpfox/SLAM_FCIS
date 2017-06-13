@@ -30,7 +30,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <octomap/octomap.h>
 #include <octomap/ColorOcTree.h>
-
+#include <pcl/filters/random_sample.h>
 namespace ORB_SLAM2 {
 
 
@@ -70,10 +70,9 @@ namespace ORB_SLAM2 {
             for (auto &th : threads) {
                 th.join();
             }
-//            mCloud = cloud;
-            if (cloud->points.size() > 0)
-                FilterPointCloud(cloud, mCloud);
-            mpThreadOctomap = new thread(&MapDrawer::BuildOctomap, this, mCloud);
+            mCloud = cloud;
+
+            mpThreadOctomap = new thread(&MapDrawer::BuildOctomap, this, cloud);
             mbCalPointCloud = false;
 
             end = std::chrono::system_clock::now();
@@ -128,9 +127,12 @@ namespace ORB_SLAM2 {
     }
 
     void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+        if (cloud->points.size() > 0)
+            FilterPointCloud(cloud, output);
         // Generate octomap
         octomap::OcTree tree(0.05);
-        for (auto p:cloud->points) {
+        for (auto p:output->points) {
             tree.updateNode(octomap::point3d(p.x, p.y, p.z), true);
         }
         tree.updateInnerOccupancy();
@@ -140,25 +142,34 @@ namespace ORB_SLAM2 {
     }
 
     void MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output) {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudStatistical(new pcl::PointCloud <pcl::PointXYZ>);
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud <pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud <pcl::PointXYZ>);
         cout << "Original Cloud Size:" << cloud->points.size() << endl;
+
+        int n_points = cloud->points.size() * 0.25;
+        pcl::RandomSample<pcl::PointXYZ> randomFilter;
+        randomFilter.setSample(n_points);
+        randomFilter.setInputCloud(cloud);
+        randomFilter.filter(*cloudRandomFilter);
+        cout << "Cloud Size After Random Sample Filter:" << cloudRandomFilter->points.size() << endl;
+
+//        // voxel filter
+//        pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
+//        voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
+//        voxelFilter.setInputCloud(cloud);
+//        voxelFilter.filter(*cloudVoxel);
 
         // statistical removal
         pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
         sor.setMeanK(50);
         sor.setStddevMulThresh(1.0);
-        sor.setInputCloud(cloud);
-        sor.filter(*cloudStatistical);
+        sor.setInputCloud(cloudRandomFilter);
+        sor.filter(*output);
 
-        cout << "Cloud Size After Statistical Filter:" << cloudStatistical->points.size() << endl;
+        cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
 
-        // voxel filter
-        pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
-        voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
-        voxelFilter.setInputCloud(cloudStatistical);
-        voxelFilter.filter(*output);
-        cout << "Cloud Size After Voxel Filter:" << output->points.size() << endl;
+
+
+
     }
 
     void MapDrawer::DrawMapPoints() {
