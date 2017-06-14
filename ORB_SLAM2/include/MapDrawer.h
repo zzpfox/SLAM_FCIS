@@ -29,44 +29,53 @@
 #include <pcl/point_types.h>
 #include <mutex>
 #include <thread>
+#include <memory>
+namespace ORB_SLAM2 {
 
-namespace ORB_SLAM2
-{
+class MapDrawer {
+ public:
+  MapDrawer(Map *pMap, const string &strSettingPath);
 
-class MapDrawer
-{
-public:
-    MapDrawer(Map* pMap, const string &strSettingPath);
+  Map *mpMap;
+  bool mbCalPointCloud;
+  std::unique_ptr<std::thread> mpThreadOctomap;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
 
-    Map* mpMap;
-    bool mbCalPointCloud;
-    std::thread* mpThreadOctomap;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+  void GeneratePointCloud(const vector<KeyFrame *> &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                          int begin, int step);
 
-    void GeneratePointCloud(const vector<KeyFrame*>& vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                            int begin, int step);
-    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
-    void DrawPointCloud();
-    void DrawMapPoints();
-    void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
-    void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
-    void SetCurrentCameraPose(const cv::Mat &Tcw);
-    void SetReferenceKeyFrame(KeyFrame *pKF);
-    void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
-    void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
-private:
+  void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 
-    float mKeyFrameSize;
-    float mKeyFrameLineWidth;
-    float mGraphLineWidth;
-    float mPointSize;
-    float mCameraSize;
-    float mCameraLineWidth;
+  void DrawPointCloud();
 
-    cv::Mat mCameraPose;
+  void DrawMapPoints();
 
-    std::mutex mMutexCamera;
-    std::mutex mMutexCloud;
+  void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
+
+  void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
+
+  void SetCurrentCameraPose(const cv::Mat &Tcw);
+
+  void SetReferenceKeyFrame(KeyFrame *pKF);
+
+  void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
+
+  void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+
+ private:
+
+  float mKeyFrameSize;
+  float mKeyFrameLineWidth;
+  float mGraphLineWidth;
+  float mPointSize;
+  float mCameraSize;
+  float mCameraLineWidth;
+
+  cv::Mat mCameraPose;
+
+  std::mutex mMutexCamera;
+  std::mutex mMutexCloud;
+  std::mutex mMutexMCloud;
 };
 
 } //namespace ORB_SLAM
