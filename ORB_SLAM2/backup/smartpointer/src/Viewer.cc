@@ -122,7 +122,6 @@ void Viewer::Run()
             mpSystem->DeactivateLocalizationMode();
             bLocalizationMode = false;
         }
-
         d_cam.Activate(s_cam);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         mpMapDrawer->DrawCurrentCamera(Twc);
@@ -175,8 +174,11 @@ void Viewer::Run()
         }
 
         if (CheckFinish())
+        {
             mpMapDrawer->CloseOctoMapThread();
             break;
+        }
+
     }
 
     SetFinish();
@@ -225,13 +227,14 @@ bool Viewer::Stop()
     unique_lock<mutex> lock2(mMutexFinish);
 
     if (mbFinishRequested)
+    {
         return false;
+    }
     else if (mbStopRequested) {
         mbStopped = true;
         mbStopRequested = false;
         return true;
     }
-
     return false;
 
 }
