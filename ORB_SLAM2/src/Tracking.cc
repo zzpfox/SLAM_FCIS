@@ -1545,15 +1545,12 @@ void Tracking::StartSegmentationThread()
 {
     if (mSegmentation)
     {
-        std::cout << "segmentation not null" << std::endl;
         mbSegStop = true;
         mSegmentation->join();
-        std::cout << "segmentation join finished" << std::endl;
     }
     std::queue<ImagePair>().swap(mImagesQueue); // clear images queue
     mbSegStop = false;
     mSegmentation.reset(new std::thread(&Tracking::PerformSegmentation, this));
-    std::cout << "segmentation start finished" << std::endl;
 }
 
 
