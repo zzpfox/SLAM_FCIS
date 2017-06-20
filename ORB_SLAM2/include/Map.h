@@ -25,68 +25,86 @@
 #include "KeyFrame.h"
 #include <set>
 #include <Eigen/Dense>
+#include <Eigen/StdVector>
 #include <mutex>
 #include <iomanip>
 #include <unordered_map>
-
-
 
 namespace ORB_SLAM2
 {
 
 class MapPoint;
+
 class KeyFrame;
-    struct ObjectPos {
-        std::vector<Eigen::Vector3d> Pcs;
 
-        ObjectPos() {}
+struct ObjectPos
+{
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    ObjectPos()
+    {}
 
-        ObjectPos(std::vector<Eigen::Vector3d> pcs) : Pcs(pcs){}
+    ObjectPos(const std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > pcs)
+        : Pcs(pcs)
+    {}
 
-        void addInstance(Eigen::Vector3d &Pc) {
-            Pcs.push_back(Pc);
+    void addInstance(const Eigen::Vector3d& Pc)
+    {
+        Pcs.push_back(Pc);
+    }
+
+    friend std::ostream &operator<<(std::ostream &os, const ObjectPos &pos)
+    {
+
+        os << std::setw(6) << std::fixed << std::setprecision(3);
+        os << "       " << "Pcs: " << std::endl;
+        for (auto &Pc: pos.Pcs) {
+            os << "       " << "[" << Pc[0] << " " << Pc[1] << " " << Pc[2] << "]" << std::endl;
         }
+        os << "       " << "--------------------------" << std::endl;
+        return os;
+    }
+    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > Pcs;
+};
 
-
-        friend std::ostream &operator<<(std::ostream &os, const ObjectPos &pos) {
-
-            os << std::setw(6) << std::fixed << std::setprecision(3);
-            os << "       " << "Pcs: " << std::endl;
-            for (auto &Pc: pos.Pcs) {
-                os << "       " << "[" << Pc[0] << " " << Pc[1] << " " << Pc[2] << "]" << std::endl;
-            }
-            os << "       "<< "--------------------------" << std::endl;
-            return os;
-        }
-    };
 class Map
 {
 public:
-    Map(cv::FileStorage& fsSettings);
+    Map();
+    Map(cv::FileStorage &fsSettings);
 
-    void AddKeyFrame(KeyFrame* pKF);
-    void AddMapPoint(MapPoint* pMP);
-    void EraseMapPoint(MapPoint* pMP);
-    void EraseKeyFrame(KeyFrame* pKF);
-    void SetReferenceMapPoints(const std::vector<MapPoint*> &vpMPs);
+    void AddKeyFrame(std::shared_ptr<KeyFrame> pKF);
+
+    void AddMapPoint(std::shared_ptr<MapPoint> pMP);
+
+    void EraseMapPoint(std::shared_ptr<MapPoint> pMP);
+
+    void EraseKeyFrame(std::shared_ptr<KeyFrame> pKF);
+
+    void SetReferenceMapPoints(const std::vector<std::shared_ptr<MapPoint> > &vpMPs);
+
     void InformNewBigChange();
+
     int GetLastBigChangeIdx();
 
-    std::vector<KeyFrame*> GetAllKeyFrames();
-    std::vector<MapPoint*> GetAllMapPoints();
-    std::vector<MapPoint*> GetReferenceMapPoints();
+    std::vector<std::shared_ptr<KeyFrame> > GetAllKeyFrames();
+
+    std::vector<std::shared_ptr<MapPoint> > GetAllMapPoints();
+
+    std::vector<std::shared_ptr<MapPoint> > GetReferenceMapPoints();
 
     long unsigned int MapPointsInMap();
-    long unsigned  KeyFramesInMap();
+
+    long unsigned KeyFramesInMap();
 
     long unsigned int GetMaxKFid();
 
     void clear();
 
-    void showSegResult();
+    void DeleteSegObjInKeyFrame(std::shared_ptr<KeyFrame> pKF);
 
+    void ShowSegResult();
 
-    vector<KeyFrame*> mvpKeyFrameOrigins;
+    vector<std::weak_ptr<KeyFrame> > mvpKeyFrameOrigins;
 
     std::mutex mMutexMapUpdate;
 
@@ -98,15 +116,17 @@ public:
     std::unordered_map<std::string, std::unordered_map<long unsigned int, ObjectPos> > mObjectMap;
 
     std::mutex mMutexObjectMap;
-    void CreateLookup(cv::FileStorage& fsSettings);
+
+    void CreateLookup(cv::FileStorage &fsSettings);
+
     cv::Mat mLookupX;
     cv::Mat mLookupY;
-
+    float mDepthMapFactor;
 protected:
-    std::set<MapPoint*> mspMapPoints;
-    std::set<KeyFrame*> mspKeyFrames;
+    std::set<std::shared_ptr<MapPoint> > mspMapPoints;
+    std::set<std::shared_ptr<KeyFrame> > mspKeyFrames;
 
-    std::vector<MapPoint*> mvpReferenceMapPoints;
+    std::vector<std::shared_ptr<MapPoint>> mvpReferenceMapPoints;
 
     long unsigned int mnMaxKFid;
 

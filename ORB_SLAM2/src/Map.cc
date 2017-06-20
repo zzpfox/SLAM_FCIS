@@ -20,49 +20,60 @@
 
 #include "Map.h"
 
-#include <mutex>
 #include <boost/filesystem.hpp>
+
 namespace ORB_SLAM2
 {
-
-Map::Map(cv::FileStorage& fsSettings):mnMaxKFid(0),mnBigChangeIdx(0)
+Map::Map()
+    : mnMaxKFid(0), mnBigChangeIdx(0)
 {
-    CreateLookup(fsSettings);
 }
 
-void Map::AddKeyFrame(KeyFrame *pKF)
+Map::Map(cv::FileStorage &fsSettings)
+    : mnMaxKFid(0), mnBigChangeIdx(0)
+{
+    CreateLookup(fsSettings);
+    mDepthMapFactor = static_cast<float>(fsSettings["DepthMapFactor"]);
+    if (fabs(mDepthMapFactor) < 1e-5)
+        mDepthMapFactor = 1;
+    else
+        mDepthMapFactor = 1.0f / mDepthMapFactor;
+}
+
+void Map::AddKeyFrame(std::shared_ptr<KeyFrame> pKF)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspKeyFrames.insert(pKF);
-    if(pKF->mnId>mnMaxKFid)
-        mnMaxKFid=pKF->mnId;
+    if (pKF->mnId > mnMaxKFid)
+        mnMaxKFid = pKF->mnId;
 }
 
-void Map::AddMapPoint(MapPoint *pMP)
+void Map::AddMapPoint(std::shared_ptr<MapPoint> pMP)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspMapPoints.insert(pMP);
 }
 
-void Map::EraseMapPoint(MapPoint *pMP)
+void Map::EraseMapPoint(std::shared_ptr<MapPoint> pMP)
 {
     unique_lock<mutex> lock(mMutexMap);
     mspMapPoints.erase(pMP);
-
     // TODO: This only erase the pointer.
     // Delete the MapPoint
 }
 
-void Map::EraseKeyFrame(KeyFrame *pKF)
+void Map::EraseKeyFrame(std::shared_ptr<KeyFrame> pKF)
 {
     unique_lock<mutex> lock(mMutexMap);
+    pKF->DeleteDepthImage();
+    DeleteSegObjInKeyFrame(pKF);
     mspKeyFrames.erase(pKF);
-
     // TODO: This only erase the pointer.
-    // Delete the MapPoint
+    // Delete the KeyFrame
 }
 
-void Map::SetReferenceMapPoints(const vector<MapPoint *> &vpMPs)
+
+void Map::SetReferenceMapPoints(const vector<std::shared_ptr<MapPoint> > &vpMPs)
 {
     unique_lock<mutex> lock(mMutexMap);
     mvpReferenceMapPoints = vpMPs;
@@ -80,16 +91,16 @@ int Map::GetLastBigChangeIdx()
     return mnBigChangeIdx;
 }
 
-vector<KeyFrame*> Map::GetAllKeyFrames()
+vector<std::shared_ptr<KeyFrame> > Map::GetAllKeyFrames()
 {
     unique_lock<mutex> lock(mMutexMap);
-    return vector<KeyFrame*>(mspKeyFrames.begin(),mspKeyFrames.end());
+    return vector<std::shared_ptr<KeyFrame> >(mspKeyFrames.begin(), mspKeyFrames.end());
 }
 
-vector<MapPoint*> Map::GetAllMapPoints()
+vector<std::shared_ptr<MapPoint> > Map::GetAllMapPoints()
 {
     unique_lock<mutex> lock(mMutexMap);
-    return vector<MapPoint*>(mspMapPoints.begin(),mspMapPoints.end());
+    return vector<std::shared_ptr<MapPoint> >(mspMapPoints.begin(), mspMapPoints.end());
 }
 
 long unsigned int Map::MapPointsInMap()
@@ -104,7 +115,7 @@ long unsigned int Map::KeyFramesInMap()
     return mspKeyFrames.size();
 }
 
-vector<MapPoint*> Map::GetReferenceMapPoints()
+vector<std::shared_ptr<MapPoint> > Map::GetReferenceMapPoints()
 {
     unique_lock<mutex> lock(mMutexMap);
     return mvpReferenceMapPoints;
@@ -118,64 +129,66 @@ long unsigned int Map::GetMaxKFid()
 
 void Map::clear()
 {
-    for(set<MapPoint*>::iterator sit=mspMapPoints.begin(), send=mspMapPoints.end(); sit!=send; sit++)
-        delete *sit;
-
-    for(set<KeyFrame*>::iterator sit=mspKeyFrames.begin(), send=mspKeyFrames.end(); sit!=send; sit++)
-        delete *sit;
-
     mspMapPoints.clear();
     mspKeyFrames.clear();
     mnMaxKFid = 0;
     mvpReferenceMapPoints.clear();
     mvpKeyFrameOrigins.clear();
 }
-    void Map::CreateLookup(cv::FileStorage& fsSettings)
-    {
-        float invfx = 1.0 / float(fsSettings["Camera.fx"]);
-        float invfy = 1.0 / float(fsSettings["Camera.fy"]);
-        float cx = fsSettings["Camera.cx"];
-        float cy = fsSettings["Camera.cy"];
-        float height = fsSettings["Camera.height"];
-        float width = fsSettings["Camera.width"];
 
-        float *it;
+void Map::CreateLookup(cv::FileStorage &fsSettings)
+{
+    float invfx = 1.0 / float(fsSettings["Camera.fx"]);
+    float invfy = 1.0 / float(fsSettings["Camera.fy"]);
+    float cx = fsSettings["Camera.cx"];
+    float cy = fsSettings["Camera.cy"];
+    float height = fsSettings["Camera.height"];
+    float width = fsSettings["Camera.width"];
 
-        mLookupY = cv::Mat(1, height, CV_32F);
-        it = mLookupY.ptr<float>();
-        for(size_t r = 0; r < height; ++r, ++it)
-        {
-            *it = (r - cy) * invfy;
-        }
+    float *it;
 
-        mLookupX = cv::Mat(1, width, CV_32F);
-        it = mLookupX.ptr<float>();
-        for(size_t c = 0; c < width; ++c, ++it)
-        {
-            *it = (c - cx) * invfx;
-        }
+    mLookupY = cv::Mat(1, height, CV_32F);
+    it = mLookupY.ptr<float>();
+    for (size_t r = 0; r < height; ++r, ++it) {
+        *it = (r - cy) * invfy;
     }
 
-    void Map::showSegResult() {
-        unique_lock<mutex> lock(mMutexObjectMap);
-        boost::filesystem::path path{"./results"};
-        boost::filesystem::create_directories(path);
-        std::string segfile("./results/seg.txt");
-        ofstream segFileOut (segfile,  ios::out|ios::binary);
-        if (segFileOut.is_open())
-        {
-            std::cout << "\x1B[35mPrinting the Hash Maps\x1B[0m" << std::endl;
-            for (auto &x:mObjectMap) {
-                std::cout << "============================" << std::endl;
-                std::cout << "\x1B[36m" << x.first << "\x1B[0m" << ": " << std::endl;
-                segFileOut  << x.first << ": " << std::endl;
-                for (auto &y: x.second) {
-                    std::cout << "    " << "KeyFrame " << y.first << ": " << std::endl;
-                    std::cout << y.second << std::endl;
-                    segFileOut << "    " << "KeyFrame " << y.first << ": " << std::endl;
-                    segFileOut << y.second << std::endl;
-                }
+    mLookupX = cv::Mat(1, width, CV_32F);
+    it = mLookupX.ptr<float>();
+    for (size_t c = 0; c < width; ++c, ++it) {
+        *it = (c - cx) * invfx;
+    }
+}
+
+void Map::DeleteSegObjInKeyFrame(std::shared_ptr<KeyFrame> pKF)
+{
+    unique_lock<mutex> lock(mMutexObjectMap);
+    for (auto &x:mObjectMap) {
+        std::unordered_map<long unsigned int, ObjectPos> &keyFrameMap = x.second;
+        keyFrameMap.erase(pKF->mnId);
+    }
+}
+
+void Map::ShowSegResult()
+{
+    unique_lock<mutex> lock(mMutexObjectMap);
+    boost::filesystem::path path{"./Results"};
+    boost::filesystem::create_directories(path);
+    std::string segfile("./Results/seg.txt");
+    ofstream segFileOut(segfile, ios::out | ios::binary);
+    if (segFileOut.is_open()) {
+        std::cout << "\x1B[35mPrinting the Hash Maps\x1B[0m" << std::endl;
+        for (auto &x:mObjectMap) {
+            std::cout << "============================" << std::endl;
+            std::cout << "\x1B[36m" << x.first << "\x1B[0m" << ": " << std::endl;
+            segFileOut << x.first << ": " << std::endl;
+            for (auto &y: x.second) {
+                std::cout << "    " << "KeyFrame " << y.first << ": " << std::endl;
+                std::cout << y.second << std::endl;
+                segFileOut << "    " << "KeyFrame " << y.first << ": " << std::endl;
+                segFileOut << y.second << std::endl;
             }
         }
     }
+}
 } //namespace ORB_SLAM

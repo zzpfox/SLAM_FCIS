@@ -30,52 +30,52 @@
 #include <mutex>
 #include <thread>
 #include <memory>
-namespace ORB_SLAM2 {
+namespace ORB_SLAM2
+{
 
-class MapDrawer {
- public:
-  MapDrawer(Map *pMap, const string &strSettingPath);
+class MapDrawer
+{
+public:
+    MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath);
 
-  Map *mpMap;
-  bool mbCalPointCloud;
-  std::unique_ptr<std::thread> mpThreadOctomap;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+    std::shared_ptr<Map> mpMap;
+    bool mbCalPointCloud;
+    std::unique_ptr<std::thread> mpThreadOctomap;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
 
-  void GeneratePointCloud(const vector<KeyFrame *> &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                          int begin, int step);
+    void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                            int begin, int step);
 
-  void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
+    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 
-  void DrawPointCloud();
+    void DrawPointCloud();
 
-  void DrawMapPoints();
+    void DrawMapPoints();
 
-  void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
+    void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
 
-  void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
+    void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc);
 
-  void SetCurrentCameraPose(const cv::Mat &Tcw);
+    void SetCurrentCameraPose(const cv::Mat &Tcw);
 
-  void SetReferenceKeyFrame(KeyFrame *pKF);
+    void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
 
-  void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
+    void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
 
-  void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+private:
 
- private:
+    float mKeyFrameSize;
+    float mKeyFrameLineWidth;
+    float mGraphLineWidth;
+    float mPointSize;
+    float mCameraSize;
+    float mCameraLineWidth;
 
-  float mKeyFrameSize;
-  float mKeyFrameLineWidth;
-  float mGraphLineWidth;
-  float mPointSize;
-  float mCameraSize;
-  float mCameraLineWidth;
+    cv::Mat mCameraPose;
 
-  cv::Mat mCameraPose;
-
-  std::mutex mMutexCamera;
-  std::mutex mMutexCloud;
-  std::mutex mMutexMCloud;
+    std::mutex mMutexCamera;
+    std::mutex mMutexCloud;
+    std::mutex mMutexMCloud;
 };
 
 } //namespace ORB_SLAM

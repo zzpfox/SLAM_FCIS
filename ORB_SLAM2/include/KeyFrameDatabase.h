@@ -24,20 +24,19 @@
 #include <vector>
 #include <list>
 #include <set>
-
+#include <memory>
 #include "KeyFrame.h"
 #include "Frame.h"
 #include "ORBVocabulary.h"
 
 #include<mutex>
 
-
 namespace ORB_SLAM2
 {
 
 class KeyFrame;
-class Frame;
 
+class Frame;
 
 class KeyFrameDatabase
 {
@@ -45,28 +44,28 @@ public:
 
     KeyFrameDatabase(const ORBVocabulary &voc);
 
-   void add(KeyFrame* pKF);
+    void add(std::shared_ptr<KeyFrame> pKF);
 
-   void erase(KeyFrame* pKF);
+    void erase(std::shared_ptr<KeyFrame> pKF);
 
-   void clear();
+    void clear();
 
-   // Loop Detection
-   std::vector<KeyFrame *> DetectLoopCandidates(KeyFrame* pKF, float minScore);
+    // Loop Detection
+    vector<std::weak_ptr<KeyFrame> > DetectLoopCandidates(std::shared_ptr<KeyFrame> pKF, float minScore);
 
-   // Relocalization
-   std::vector<KeyFrame*> DetectRelocalizationCandidates(Frame* F);
+    // Relocalization
+    std::vector<std::weak_ptr<KeyFrame> > DetectRelocalizationCandidates(Frame *F);
 
 protected:
 
-  // Associated vocabulary
-  const ORBVocabulary* mpVoc;
+    // Associated vocabulary
+    const ORBVocabulary *mpVoc;
 
-  // Inverted file
-  std::vector<list<KeyFrame*> > mvInvertedFile;
+    // Inverted file
+    std::vector<std::list<std::weak_ptr<KeyFrame> > > mvInvertedFile;
 
-  // Mutex
-  std::mutex mMutex;
+    // Mutex
+    std::mutex mMutex;
 };
 
 } //namespace ORB_SLAM

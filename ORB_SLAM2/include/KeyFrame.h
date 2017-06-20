@@ -28,70 +28,100 @@
 #include "ORBextractor.h"
 #include "Frame.h"
 #include "KeyFrameDatabase.h"
-
+#include <memory>
 #include <mutex>
-
 
 namespace ORB_SLAM2
 {
 
 class Map;
+
 class MapPoint;
+
 class Frame;
+
 class KeyFrameDatabase;
 
-class KeyFrame
+class KeyFrame: public std::enable_shared_from_this<KeyFrame>
 {
 public:
-    KeyFrame(Frame &F, Map* pMap, KeyFrameDatabase* pKFDB);
+    KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrameDatabase> pKFDB);
 
     // Pose functions
     void SetPose(const cv::Mat &Tcw);
+
     cv::Mat GetPose();
+
     cv::Mat GetPoseInverse();
+
     cv::Mat GetCameraCenter();
+
     cv::Mat GetStereoCenter();
+
     cv::Mat GetRotation();
+
     cv::Mat GetTranslation();
 
     // Bag of Words Representation
     void ComputeBoW();
 
     // Covisibility graph functions
-    void AddConnection(KeyFrame* pKF, const int &weight);
-    void EraseConnection(KeyFrame* pKF);
+    void AddConnection(std::shared_ptr<KeyFrame> pKF, const int &weight);
+
+    void EraseConnection(std::shared_ptr<KeyFrame> pKF);
+
     void UpdateConnections();
+
     void UpdateBestCovisibles();
-    std::set<KeyFrame *> GetConnectedKeyFrames();
-    std::vector<KeyFrame* > GetVectorCovisibleKeyFrames();
-    std::vector<KeyFrame*> GetBestCovisibilityKeyFrames(const int &N);
-    std::vector<KeyFrame*> GetCovisiblesByWeight(const int &w);
-    int GetWeight(KeyFrame* pKF);
+
+    std::set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > GetConnectedKeyFrames();
+
+    std::vector<std::weak_ptr<KeyFrame> > GetVectorCovisibleKeyFrames();
+
+    std::vector<std::weak_ptr<KeyFrame> > GetBestCovisibilityKeyFrames(const int &N);
+
+    std::vector<std::weak_ptr<KeyFrame> > GetCovisiblesByWeight(const int &w);
+
+    int GetWeight(std::weak_ptr<KeyFrame> pKF);
 
     // Spanning tree functions
-    void AddChild(KeyFrame* pKF);
-    void EraseChild(KeyFrame* pKF);
-    void ChangeParent(KeyFrame* pKF);
-    std::set<KeyFrame*> GetChilds();
-    KeyFrame* GetParent();
-    bool hasChild(KeyFrame* pKF);
+    void AddChild(std::shared_ptr<KeyFrame> pKF);
+
+    void EraseChild(std::shared_ptr<KeyFrame> pKF);
+
+    void ChangeParent(std::shared_ptr<KeyFrame> pKF);
+
+    std::set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > GetChilds();
+
+    std::weak_ptr<KeyFrame> GetParent();
+
+    bool hasChild(std::weak_ptr<KeyFrame> pKF);
 
     // Loop Edges
-    void AddLoopEdge(KeyFrame* pKF);
-    std::set<KeyFrame*> GetLoopEdges();
+    void AddLoopEdge(std::weak_ptr<KeyFrame> pKF);
+
+    std::set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > GetLoopEdges();
 
     // MapPoint observation functions
-    void AddMapPoint(MapPoint* pMP, const size_t &idx);
+    void AddMapPoint(std::shared_ptr<MapPoint> pMP, const size_t &idx);
+
     void EraseMapPointMatch(const size_t &idx);
-    void EraseMapPointMatch(MapPoint* pMP);
-    void ReplaceMapPointMatch(const size_t &idx, MapPoint* pMP);
-    std::set<MapPoint*> GetMapPoints();
-    std::vector<MapPoint*> GetMapPointMatches();
+
+    void EraseMapPointMatch(std::shared_ptr<MapPoint> pMP);
+
+    void ReplaceMapPointMatch(const size_t &idx, std::shared_ptr<MapPoint> pMP);
+
+    std::set<std::weak_ptr<MapPoint>, std::owner_less<std::weak_ptr<MapPoint> > > GetMapPoints();
+
+    std::vector<std::weak_ptr<MapPoint> > GetMapPointMatches();
+
     int TrackedMapPoints(const int &minObs);
-    MapPoint* GetMapPoint(const size_t &idx);
+
+    std::weak_ptr<MapPoint> GetMapPoint(const size_t &idx);
 
     // KeyPoint functions
-    std::vector<size_t> GetFeaturesInArea(const float &x, const float  &y, const float  &r) const;
+    std::vector<size_t> GetFeaturesInArea(const float &x, const float &y, const float &r) const;
+
     cv::Mat UnprojectStereo(int i);
 
     // Image
@@ -99,22 +129,28 @@ public:
 
     // Enable/Disable bad flag changes
     void SetNotErase();
+
     void SetErase();
 
     // Set/check bad flag
     void SetBadFlag();
+
     bool isBad();
 
     // Compute Scene Depth (q=2 median). Used in monocular.
     float ComputeSceneMedianDepth(const int q);
 
-    static bool weightComp( int a, int b){
-        return a>b;
+    static bool weightComp(int a, int b)
+    {
+        return a > b;
     }
 
-    static bool lId(KeyFrame* pKF1, KeyFrame* pKF2){
-        return pKF1->mnId<pKF2->mnId;
+    static bool lId(std::weak_ptr<KeyFrame> pKF1, std::weak_ptr<KeyFrame> pKF2)
+    {
+        return pKF1.lock()->mnId < pKF2.lock()->mnId;
     }
+
+    void DeleteDepthImage();
 
 
     // The following variables are accesed from only 1 thread or never change (no mutex needed).
@@ -173,8 +209,6 @@ public:
     // Pose relative to parent (this is computed when bad flag is activated)
     cv::Mat mTcp;
 
-    const cv::Mat mImDepth;
-
     // Scale
     const int mnScaleLevels;
     const float mfScaleFactor;
@@ -190,6 +224,8 @@ public:
     const int mnMaxY;
     const cv::Mat mK;
 
+    std::string mDepthImageName;
+
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:
@@ -202,33 +238,33 @@ protected:
     cv::Mat Cw; // Stereo middel point. Only for visualization
 
     // MapPoints associated to keypoints
-    std::vector<MapPoint*> mvpMapPoints;
+    std::vector<std::weak_ptr<MapPoint> > mvpMapPoints;
 
     // BoW
-    KeyFrameDatabase* mpKeyFrameDB;
-    ORBVocabulary* mpORBvocabulary;
+    std::shared_ptr<KeyFrameDatabase> mpKeyFrameDB;
+    std::shared_ptr<ORBVocabulary> mpORBvocabulary;
 
     // Grid over the image to speed up feature matching
-    std::vector< std::vector <std::vector<size_t> > > mGrid;
+    std::vector<std::vector<std::vector<size_t> > > mGrid;
 
-    std::map<KeyFrame*,int> mConnectedKeyFrameWeights;
-    std::vector<KeyFrame*> mvpOrderedConnectedKeyFrames;
+    std::map<std::weak_ptr<KeyFrame>, int, std::owner_less<std::weak_ptr<KeyFrame> > > mConnectedKeyFrameWeights;
+    std::vector<std::weak_ptr<KeyFrame> > mvpOrderedConnectedKeyFrames;
     std::vector<int> mvOrderedWeights;
 
     // Spanning Tree and Loop Edges
     bool mbFirstConnection;
-    KeyFrame* mpParent;
-    std::set<KeyFrame*> mspChildrens;
-    std::set<KeyFrame*> mspLoopEdges;
+    std::weak_ptr<KeyFrame> mpParent;
+    std::set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > mspChildrens;
+    std::set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > mspLoopEdges;
 
     // Bad flags
     bool mbNotErase;
     bool mbToBeErased;
-    bool mbBad;    
+    bool mbBad;
 
     float mHalfBaseline; // Only for visualization
 
-    Map* mpMap;
+    std::weak_ptr<Map> mpMap;
 
     std::mutex mMutexPose;
     std::mutex mMutexConnections;

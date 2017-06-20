@@ -28,7 +28,7 @@
 #include "Tracking.h"
 
 #include "KeyFrameDatabase.h"
-
+#include <memory>
 #include <thread>
 #include <mutex>
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
@@ -37,44 +37,49 @@ namespace ORB_SLAM2
 {
 
 class Tracking;
-class LocalMapping;
-class KeyFrameDatabase;
 
+class LocalMapping;
+
+class KeyFrameDatabase;
 
 class LoopClosing
 {
 public:
-
-    typedef pair<set<KeyFrame*>,int> ConsistentGroup;    
-    typedef map<KeyFrame*,g2o::Sim3,std::less<KeyFrame*>,
-        Eigen::aligned_allocator<std::pair<const KeyFrame*, g2o::Sim3> > > KeyFrameAndPose;
+//    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    typedef pair<set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > >, int> ConsistentGroup;
+    typedef map<std::weak_ptr<KeyFrame>, g2o::Sim3, std::owner_less<std::weak_ptr<KeyFrame> >,
+                Eigen::aligned_allocator<std::pair<const std::weak_ptr<KeyFrame>, g2o::Sim3> > > KeyFrameAndPose;
 
 public:
 
-    LoopClosing(Map* pMap, KeyFrameDatabase* pDB, ORBVocabulary* pVoc,const bool bFixScale);
+    LoopClosing(std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrameDatabase> pDB,
+                std::shared_ptr<ORBVocabulary> pVoc, const bool bFixScale);
 
-    void SetTracker(Tracking* pTracker);
+    void SetTracker(std::shared_ptr<Tracking> pTracker);
 
-    void SetLocalMapper(LocalMapping* pLocalMapper);
+    void SetLocalMapper(std::shared_ptr<LocalMapping> pLocalMapper);
 
     // Main function
     void Run();
 
-    void InsertKeyFrame(KeyFrame *pKF);
+    void InsertKeyFrame(std::shared_ptr<KeyFrame> pKF);
 
     void RequestReset();
 
     // This function will run in a separate thread
     void RunGlobalBundleAdjustment(unsigned long nLoopKF);
 
-    bool isRunningGBA(){
+    bool isRunningGBA()
+    {
         unique_lock<std::mutex> lock(mMutexGBA);
         return mbRunningGBA;
     }
-    bool isFinishedGBA(){
+
+    bool isFinishedGBA()
+    {
         unique_lock<std::mutex> lock(mMutexGBA);
         return mbFinishedGBA;
-    }   
+    }
 
     void RequestFinish();
 
@@ -95,24 +100,27 @@ protected:
     void CorrectLoop();
 
     void ResetIfRequested();
+
     bool mbResetRequested;
     std::mutex mMutexReset;
 
     bool CheckFinish();
+
     void SetFinish();
+
     bool mbFinishRequested;
     bool mbFinished;
     std::mutex mMutexFinish;
 
-    Map* mpMap;
-    Tracking* mpTracker;
+    std::shared_ptr<Map> mpMap;
+    std::shared_ptr<Tracking> mpTracker;
 
-    KeyFrameDatabase* mpKeyFrameDB;
-    ORBVocabulary* mpORBVocabulary;
+    std::shared_ptr<KeyFrameDatabase> mpKeyFrameDB;
+    std::shared_ptr<ORBVocabulary> mpORBVocabulary;
 
-    LocalMapping *mpLocalMapper;
+    std::shared_ptr<LocalMapping> mpLocalMapper;
 
-    std::list<KeyFrame*> mlpLoopKeyFrameQueue;
+    std::list<std::weak_ptr<KeyFrame> > mlpLoopKeyFrameQueue;
 
     std::mutex mMutexLoopQueue;
 
@@ -120,13 +128,13 @@ protected:
     float mnCovisibilityConsistencyTh;
 
     // Loop detector variables
-    KeyFrame* mpCurrentKF;
-    KeyFrame* mpMatchedKF;
+    std::weak_ptr<KeyFrame> mpCurrentKF;
+    std::weak_ptr<KeyFrame> mpMatchedKF;
     std::vector<ConsistentGroup> mvConsistentGroups;
-    std::vector<KeyFrame*> mvpEnoughConsistentCandidates;
-    std::vector<KeyFrame*> mvpCurrentConnectedKFs;
-    std::vector<MapPoint*> mvpCurrentMatchedPoints;
-    std::vector<MapPoint*> mvpLoopMapPoints;
+    std::vector<std::weak_ptr<KeyFrame> > mvpEnoughConsistentCandidates;
+    std::vector<std::weak_ptr<KeyFrame> > mvpCurrentConnectedKFs;
+    std::vector<std::weak_ptr<MapPoint> > mvpCurrentMatchedPoints;
+    std::vector<std::weak_ptr<MapPoint> > mvpLoopMapPoints;
     cv::Mat mScw;
     g2o::Sim3 mg2oScw;
 
@@ -137,11 +145,10 @@ protected:
     bool mbFinishedGBA;
     bool mbStopGBA;
     std::mutex mMutexGBA;
-    std::thread* mpThreadGBA;
+    std::unique_ptr<std::thread> mpThreadGBA;
 
     // Fix scale in the stereo/RGB-D case
     bool mbFixScale;
-
 
     bool mnFullBAIdx;
 };

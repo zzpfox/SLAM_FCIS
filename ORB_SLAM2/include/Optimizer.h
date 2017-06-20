@@ -28,7 +28,7 @@
 #include "Frame.h"
 
 #include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
-
+#include <memory>
 namespace ORB_SLAM2
 {
 
@@ -37,23 +37,30 @@ class LoopClosing;
 class Optimizer
 {
 public:
-    void static BundleAdjustment(const std::vector<KeyFrame*> &vpKF, const std::vector<MapPoint*> &vpMP,
-                                 int nIterations = 5, bool *pbStopFlag=NULL, const unsigned long nLoopKF=0,
+    void static BundleAdjustment(const std::vector<std::shared_ptr<KeyFrame> > &vpKF, const std::vector<std::shared_ptr<MapPoint> > &vpMP,
+                                 int nIterations = 5, bool *pbStopFlag = NULL, const unsigned long nLoopKF = 0,
                                  const bool bRobust = true);
-    void static GlobalBundleAdjustemnt(Map* pMap, int nIterations=5, bool *pbStopFlag=NULL,
-                                       const unsigned long nLoopKF=0, const bool bRobust = true);
-    void static LocalBundleAdjustment(KeyFrame* pKF, bool *pbStopFlag, Map *pMap);
-    int static PoseOptimization(Frame* pFrame);
+
+    void static GlobalBundleAdjustemnt(std::shared_ptr<Map> pMap, int nIterations = 5, bool *pbStopFlag = NULL,
+                                       const unsigned long nLoopKF = 0, const bool bRobust = true);
+
+    void static LocalBundleAdjustment(std::shared_ptr<KeyFrame> pKF, bool *pbStopFlag, std::shared_ptr<Map> pMap);
+
+    int static PoseOptimization(Frame *pFrame);
 
     // if bFixScale is true, 6DoF optimization (stereo,rgbd), 7DoF otherwise (mono)
-    void static OptimizeEssentialGraph(Map* pMap, KeyFrame* pLoopKF, KeyFrame* pCurKF,
+    void static OptimizeEssentialGraph(std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame> pLoopKF,
+                                       std::shared_ptr<KeyFrame> pCurKF,
                                        const LoopClosing::KeyFrameAndPose &NonCorrectedSim3,
                                        const LoopClosing::KeyFrameAndPose &CorrectedSim3,
-                                       const map<KeyFrame *, set<KeyFrame *> > &LoopConnections,
+                                       const map<std::weak_ptr<KeyFrame>,
+                                                 set<std::weak_ptr<KeyFrame>,
+                                                     std::owner_less<std::weak_ptr<KeyFrame> > >,
+                                                 std::owner_less<std::weak_ptr<KeyFrame> > > &LoopConnections,
                                        const bool &bFixScale);
 
     // if bFixScale is true, optimize SE3 (stereo,rgbd), Sim3 otherwise (mono)
-    static int OptimizeSim3(KeyFrame* pKF1, KeyFrame* pKF2, std::vector<MapPoint *> &vpMatches1,
+    static int OptimizeSim3(std::shared_ptr<KeyFrame> pKF1, std::shared_ptr<KeyFrame> pKF2, std::vector<std::weak_ptr<MapPoint> > &vpMatches1,
                             g2o::Sim3 &g2oS12, const float th2, const bool bFixScale);
 };
 

@@ -26,48 +26,59 @@
 #include "LoopClosing.h"
 #include "Tracking.h"
 #include "KeyFrameDatabase.h"
-
+#include <memory>
 #include <mutex>
-
 
 namespace ORB_SLAM2
 {
 
 class Tracking;
+
 class LoopClosing;
+
 class Map;
 
 class LocalMapping
 {
 public:
-    LocalMapping(Map* pMap, const float bMonocular);
+    LocalMapping(std::shared_ptr<Map> pMap, const float bMonocular);
 
-    void SetLoopCloser(LoopClosing* pLoopCloser);
+    void SetLoopCloser(std::shared_ptr<LoopClosing> pLoopCloser);
 
-    void SetTracker(Tracking* pTracker);
+    void SetTracker(std::shared_ptr<Tracking> pTracker);
 
     // Main function
     void Run();
 
-    void InsertKeyFrame(KeyFrame* pKF);
+    void InsertKeyFrame(std::shared_ptr<KeyFrame> pKF);
 
     // Thread Synch
     void RequestStop();
+
     void RequestReset();
+
     bool Stop();
+
     void Release();
+
     bool isStopped();
+
     bool stopRequested();
+
     bool AcceptKeyFrames();
+
     void SetAcceptKeyFrames(bool flag);
+
     bool SetNotStop(bool flag);
 
     void InterruptBA();
 
     void RequestFinish();
+
     bool isFinished();
 
-    int KeyframesInQueue(){
+    int KeyframesInQueue()
+    {
         unique_lock<std::mutex> lock(mMutexNewKFs);
         return mlNewKeyFrames.size();
     }
@@ -75,40 +86,46 @@ public:
 protected:
 
     bool CheckNewKeyFrames();
+
     void ProcessNewKeyFrame();
+
     void CreateNewMapPoints();
 
     void MapPointCulling();
+
     void SearchInNeighbors();
 
     void KeyFrameCulling();
 
-    cv::Mat ComputeF12(KeyFrame* &pKF1, KeyFrame* &pKF2);
+    cv::Mat ComputeF12(std::shared_ptr<KeyFrame> &pKF1, std::shared_ptr<KeyFrame> &pKF2);
 
     cv::Mat SkewSymmetricMatrix(const cv::Mat &v);
 
     bool mbMonocular;
 
     void ResetIfRequested();
+
     bool mbResetRequested;
     std::mutex mMutexReset;
 
     bool CheckFinish();
+
     void SetFinish();
+
     bool mbFinishRequested;
     bool mbFinished;
     std::mutex mMutexFinish;
 
-    Map* mpMap;
+    std::shared_ptr<Map> mpMap;
 
-    LoopClosing* mpLoopCloser;
-    Tracking* mpTracker;
+    std::shared_ptr<LoopClosing> mpLoopCloser;
+    std::shared_ptr<Tracking> mpTracker;
 
-    std::list<KeyFrame*> mlNewKeyFrames;
+    std::list<std::shared_ptr<KeyFrame> > mlNewKeyFrames;
 
-    KeyFrame* mpCurrentKeyFrame;
+    std::shared_ptr<KeyFrame> mpCurrentKeyFrame;
 
-    std::list<MapPoint*> mlpRecentAddedMapPoints;
+    std::list<std::weak_ptr<MapPoint> > mlpRecentAddedMapPoints;
 
     std::mutex mMutexNewKFs;
 

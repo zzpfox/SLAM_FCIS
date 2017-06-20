@@ -54,142 +54,157 @@
 #include <opencv2/core/core.hpp>
 #include "MapPoint.h"
 #include "Frame.h"
-
+#include <memory>
 namespace ORB_SLAM2
 {
 
-class PnPsolver {
- public:
-  PnPsolver(const Frame &F, const vector<MapPoint*> &vpMapPointMatches);
+class PnPsolver
+{
+public:
+    PnPsolver(const Frame &F, const vector<std::shared_ptr<MapPoint> > &vpMapPointMatches);
 
-  ~PnPsolver();
+    ~PnPsolver();
 
-  void SetRansacParameters(double probability = 0.99, int minInliers = 8 , int maxIterations = 300, int minSet = 4, float epsilon = 0.4,
-                           float th2 = 5.991);
+    void SetRansacParameters(double probability = 0.99, int minInliers = 8, int maxIterations = 300, int minSet = 4,
+                             float epsilon = 0.4,
+                             float th2 = 5.991);
 
-  cv::Mat find(vector<bool> &vbInliers, int &nInliers);
+    cv::Mat find(vector<bool> &vbInliers, int &nInliers);
 
-  cv::Mat iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers);
+    cv::Mat iterate(int nIterations, bool &bNoMore, vector<bool> &vbInliers, int &nInliers);
 
- private:
+private:
 
-  void CheckInliers();
-  bool Refine();
+    void CheckInliers();
 
-  // Functions from the original EPnP code
-  void set_maximum_number_of_correspondences(const int n);
-  void reset_correspondences(void);
-  void add_correspondence(const double X, const double Y, const double Z,
-              const double u, const double v);
+    bool Refine();
 
-  double compute_pose(double R[3][3], double T[3]);
+    // Functions from the original EPnP code
+    void set_maximum_number_of_correspondences(const int n);
 
-  void relative_error(double & rot_err, double & transl_err,
-              const double Rtrue[3][3], const double ttrue[3],
-              const double Rest[3][3],  const double test[3]);
+    void reset_correspondences(void);
 
-  void print_pose(const double R[3][3], const double t[3]);
-  double reprojection_error(const double R[3][3], const double t[3]);
+    void add_correspondence(const double X, const double Y, const double Z,
+                            const double u, const double v);
 
-  void choose_control_points(void);
-  void compute_barycentric_coordinates(void);
-  void fill_M(CvMat * M, const int row, const double * alphas, const double u, const double v);
-  void compute_ccs(const double * betas, const double * ut);
-  void compute_pcs(void);
+    double compute_pose(double R[3][3], double T[3]);
 
-  void solve_for_sign(void);
+    void relative_error(double &rot_err, double &transl_err,
+                        const double Rtrue[3][3], const double ttrue[3],
+                        const double Rest[3][3], const double test[3]);
 
-  void find_betas_approx_1(const CvMat * L_6x10, const CvMat * Rho, double * betas);
-  void find_betas_approx_2(const CvMat * L_6x10, const CvMat * Rho, double * betas);
-  void find_betas_approx_3(const CvMat * L_6x10, const CvMat * Rho, double * betas);
-  void qr_solve(CvMat * A, CvMat * b, CvMat * X);
+    void print_pose(const double R[3][3], const double t[3]);
 
-  double dot(const double * v1, const double * v2);
-  double dist2(const double * p1, const double * p2);
+    double reprojection_error(const double R[3][3], const double t[3]);
 
-  void compute_rho(double * rho);
-  void compute_L_6x10(const double * ut, double * l_6x10);
+    void choose_control_points(void);
 
-  void gauss_newton(const CvMat * L_6x10, const CvMat * Rho, double current_betas[4]);
-  void compute_A_and_b_gauss_newton(const double * l_6x10, const double * rho,
-				    double cb[4], CvMat * A, CvMat * b);
+    void compute_barycentric_coordinates(void);
 
-  double compute_R_and_t(const double * ut, const double * betas,
-			 double R[3][3], double t[3]);
+    void fill_M(CvMat *M, const int row, const double *alphas, const double u, const double v);
 
-  void estimate_R_and_t(double R[3][3], double t[3]);
+    void compute_ccs(const double *betas, const double *ut);
 
-  void copy_R_and_t(const double R_dst[3][3], const double t_dst[3],
-		    double R_src[3][3], double t_src[3]);
+    void compute_pcs(void);
 
-  void mat_to_quat(const double R[3][3], double q[4]);
+    void solve_for_sign(void);
 
+    void find_betas_approx_1(const CvMat *L_6x10, const CvMat *Rho, double *betas);
 
-  double uc, vc, fu, fv;
+    void find_betas_approx_2(const CvMat *L_6x10, const CvMat *Rho, double *betas);
 
-  double * pws, * us, * alphas, * pcs;
-  int maximum_number_of_correspondences;
-  int number_of_correspondences;
+    void find_betas_approx_3(const CvMat *L_6x10, const CvMat *Rho, double *betas);
 
-  double cws[4][3], ccs[4][3];
-  double cws_determinant;
+    void qr_solve(CvMat *A, CvMat *b, CvMat *X);
 
-  vector<MapPoint*> mvpMapPointMatches;
+    double dot(const double *v1, const double *v2);
 
-  // 2D Points
-  vector<cv::Point2f> mvP2D;
-  vector<float> mvSigma2;
+    double dist2(const double *p1, const double *p2);
 
-  // 3D Points
-  vector<cv::Point3f> mvP3Dw;
+    void compute_rho(double *rho);
 
-  // Index in Frame
-  vector<size_t> mvKeyPointIndices;
+    void compute_L_6x10(const double *ut, double *l_6x10);
 
-  // Current Estimation
-  double mRi[3][3];
-  double mti[3];
-  cv::Mat mTcwi;
-  vector<bool> mvbInliersi;
-  int mnInliersi;
+    void gauss_newton(const CvMat *L_6x10, const CvMat *Rho, double current_betas[4]);
 
-  // Current Ransac State
-  int mnIterations;
-  vector<bool> mvbBestInliers;
-  int mnBestInliers;
-  cv::Mat mBestTcw;
+    void compute_A_and_b_gauss_newton(const double *l_6x10, const double *rho,
+                                      double cb[4], CvMat *A, CvMat *b);
 
-  // Refined
-  cv::Mat mRefinedTcw;
-  vector<bool> mvbRefinedInliers;
-  int mnRefinedInliers;
+    double compute_R_and_t(const double *ut, const double *betas,
+                           double R[3][3], double t[3]);
 
-  // Number of Correspondences
-  int N;
+    void estimate_R_and_t(double R[3][3], double t[3]);
 
-  // Indices for random selection [0 .. N-1]
-  vector<size_t> mvAllIndices;
+    void copy_R_and_t(const double R_dst[3][3], const double t_dst[3],
+                      double R_src[3][3], double t_src[3]);
 
-  // RANSAC probability
-  double mRansacProb;
+    void mat_to_quat(const double R[3][3], double q[4]);
 
-  // RANSAC min inliers
-  int mRansacMinInliers;
+    double uc, vc, fu, fv;
 
-  // RANSAC max iterations
-  int mRansacMaxIts;
+    double *pws, *us, *alphas, *pcs;
+    int maximum_number_of_correspondences;
+    int number_of_correspondences;
 
-  // RANSAC expected inliers/total ratio
-  float mRansacEpsilon;
+    double cws[4][3], ccs[4][3];
+    double cws_determinant;
 
-  // RANSAC Threshold inlier/outlier. Max error e = dist(P1,T_12*P2)^2
-  float mRansacTh;
+    vector<std::shared_ptr<MapPoint> > mvpMapPointMatches;
 
-  // RANSAC Minimun Set used at each iteration
-  int mRansacMinSet;
+    // 2D Points
+    vector<cv::Point2f> mvP2D;
+    vector<float> mvSigma2;
 
-  // Max square error associated with scale level. Max error = th*th*sigma(level)*sigma(level)
-  vector<float> mvMaxError;
+    // 3D Points
+    vector<cv::Point3f> mvP3Dw;
+
+    // Index in Frame
+    vector<size_t> mvKeyPointIndices;
+
+    // Current Estimation
+    double mRi[3][3];
+    double mti[3];
+    cv::Mat mTcwi;
+    vector<bool> mvbInliersi;
+    int mnInliersi;
+
+    // Current Ransac State
+    int mnIterations;
+    vector<bool> mvbBestInliers;
+    int mnBestInliers;
+    cv::Mat mBestTcw;
+
+    // Refined
+    cv::Mat mRefinedTcw;
+    vector<bool> mvbRefinedInliers;
+    int mnRefinedInliers;
+
+    // Number of Correspondences
+    int N;
+
+    // Indices for random selection [0 .. N-1]
+    vector<size_t> mvAllIndices;
+
+    // RANSAC probability
+    double mRansacProb;
+
+    // RANSAC min inliers
+    int mRansacMinInliers;
+
+    // RANSAC max iterations
+    int mRansacMaxIts;
+
+    // RANSAC expected inliers/total ratio
+    float mRansacEpsilon;
+
+    // RANSAC Threshold inlier/outlier. Max error e = dist(P1,T_12*P2)^2
+    float mRansacTh;
+
+    // RANSAC Minimun Set used at each iteration
+    int mRansacMinSet;
+
+    // Max square error associated with scale level. Max error = th*th*sigma(level)*sigma(level)
+    vector<float> mvMaxError;
 
 };
 
