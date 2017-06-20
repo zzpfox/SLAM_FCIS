@@ -1,4 +1,4 @@
-# ORB_SLAM2 with FCIS Segmentation
+# ORB_SLAM2 with FCIS Segmentation 
 
 * Note: This repository is mainly built upon [ORB_SLAM2](https://github.com/raulmur/ORB_SLAM2) and [FCIS](https://github.com/msracver/FCIS). Many thanks for their great work.
 
@@ -21,3 +21,8 @@ The current repository only supports **RGBD sensor** input.
 
 After running, you can toggle `Show DenseMap` button to see the point cloud generated at the moment you pressed this button.
 And `Show SegObjects` will show the objects' type and their corresponding positions in the keyframes in which they exist.
+
+
+### Major Modifications compared to the master branch
+* Python Socket server in FCIS will reset to accept new connections automatically when the client is shutdown.
+* ORB-SLAM2 now uses `shared_ptr`, 'weak_ptr', and `unique_ptr` instead of the usual pointers. Note that the original code in ORB-SLAM2 uses the pointers generted by `new`, and there is serious memory leak problem as there is hardly any corresponding `delete`. 
