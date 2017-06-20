@@ -134,6 +134,7 @@ void Map::clear()
     mnMaxKFid = 0;
     mvpReferenceMapPoints.clear();
     mvpKeyFrameOrigins.clear();
+    mObjectMap.clear();
 }
 
 void Map::CreateLookup(cv::FileStorage &fsSettings)
