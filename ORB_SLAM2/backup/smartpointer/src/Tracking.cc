@@ -1517,6 +1517,7 @@ void Tracking::Reset()
 
     // Clear Map (this erase MapPoints and KeyFrames)
     mpMap->clear();
+    mpMapDrawer->clear();
 
     KeyFrame::nNextId = 0;
     Frame::nNextId = 0;

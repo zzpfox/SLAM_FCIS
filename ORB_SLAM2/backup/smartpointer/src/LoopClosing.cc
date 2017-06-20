@@ -78,7 +78,13 @@ void LoopClosing::Run()
         ResetIfRequested();
 
         if (CheckFinish())
+        {
+            while (mbRunningGBA)
+            {
+                usleep(1000);
+            }
             break;
+        }
 
         usleep(5000);
     }
@@ -652,6 +658,11 @@ void LoopClosing::ResetIfRequested()
     unique_lock<mutex> lock(mMutexReset);
     if (mbResetRequested) {
         mlpLoopKeyFrameQueue.clear();
+        mvConsistentGroups.clear();
+        mvpEnoughConsistentCandidates.clear();
+        mvpCurrentConnectedKFs.clear();
+        mvpCurrentMatchedPoints.clear();
+        mvpLoopMapPoints.clear();
         mLastLoopKFid = 0;
         mbResetRequested = false;
     }

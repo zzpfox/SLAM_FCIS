@@ -420,4 +420,8 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
         M.SetIdentity();
 }
 
+void MapDrawer::clear()
+{
+    mCloud.reset();
+}
 } //namespace ORB_SLAM
