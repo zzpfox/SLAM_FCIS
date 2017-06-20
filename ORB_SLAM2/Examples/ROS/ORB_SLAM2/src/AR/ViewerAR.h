@@ -34,7 +34,8 @@ namespace ORB_SLAM2
 class Plane
 {
 public:
-    Plane(const std::vector<MapPoint*> &vMPs, const cv::Mat &Tcw);
+    Plane(const std::vector<MapPoint *> &vMPs, const cv::Mat &Tcw);
+
     Plane(const float &nx, const float &ny, const float &nz, const float &ox, const float &oy, const float &oz);
 
     void Recompute();
@@ -49,7 +50,7 @@ public:
     cv::Mat Tpw;
     pangolin::OpenGlMatrix glTpw;
     //MapPoints that define the plane
-    std::vector<MapPoint*> mvMPs;
+    std::vector<MapPoint *> mvMPs;
     //camera pose when the plane was first observed (to compute normal direction)
     cv::Mat mTcw, XC;
 };
@@ -59,47 +60,61 @@ class ViewerAR
 public:
     ViewerAR();
 
-    void SetFPS(const float fps){
+    void SetFPS(const float fps)
+    {
         mFPS = fps;
-        mT=1e3/fps;
+        mT = 1e3 / fps;
     }
 
-    void SetSLAM(ORB_SLAM2::System* pSystem){
+    void SetSLAM(ORB_SLAM2::System *pSystem)
+    {
         mpSystem = pSystem;
     }
 
-    // Main thread function. 
+    // Main thread function.
     void Run();
 
-    void SetCameraCalibration(const float &fx_, const float &fy_, const float &cx_, const float &cy_){
-        fx = fx_; fy = fy_; cx = cx_; cy = cy_;
+    void SetCameraCalibration(const float &fx_, const float &fy_, const float &cx_, const float &cy_)
+    {
+        fx = fx_;
+        fy = fy_;
+        cx = cx_;
+        cy = cy_;
     }
 
     void SetImagePose(const cv::Mat &im, const cv::Mat &Tcw, const int &status,
-                      const std::vector<cv::KeyPoint> &vKeys, const std::vector<MapPoint*> &vMPs);
+                      const std::vector<cv::KeyPoint> &vKeys, const std::vector<MapPoint *> &vMPs);
 
     void GetImagePose(cv::Mat &im, cv::Mat &Tcw, int &status,
-                      std::vector<cv::KeyPoint> &vKeys,  std::vector<MapPoint*> &vMPs);
+                      std::vector<cv::KeyPoint> &vKeys, std::vector<MapPoint *> &vMPs);
 
 private:
 
     //SLAM
-    ORB_SLAM2::System* mpSystem;
+    ORB_SLAM2::System *mpSystem;
 
     void PrintStatus(const int &status, const bool &bLocMode, cv::Mat &im);
-    void AddTextToImage(const std::string &s, cv::Mat &im, const int r=0, const int g=0, const int b=0);
-    void LoadCameraPose(const cv::Mat &Tcw);
-    void DrawImageTexture(pangolin::GlTexture &imageTexture, cv::Mat &im);
-    void DrawCube(const float &size, const float x=0, const float y=0, const float z=0);
-    void DrawPlane(int ndivs, float ndivsize);
-    void DrawPlane(Plane* pPlane, int ndivs, float ndivsize);
-    void DrawTrackedPoints(const std::vector<cv::KeyPoint> &vKeys, const std::vector<MapPoint*> &vMPs, cv::Mat &im);
 
-    Plane* DetectPlane(const cv::Mat Tcw, const std::vector<MapPoint*> &vMPs, const int iterations=50);
+    void AddTextToImage(const std::string &s, cv::Mat &im, const int r = 0, const int g = 0, const int b = 0);
+
+    void LoadCameraPose(const cv::Mat &Tcw);
+
+    void DrawImageTexture(pangolin::GlTexture &imageTexture, cv::Mat &im);
+
+    void DrawCube(const float &size, const float x = 0, const float y = 0, const float z = 0);
+
+    void DrawPlane(int ndivs, float ndivsize);
+
+    void DrawPlane(Plane *pPlane, int ndivs, float ndivsize);
+
+    void
+    DrawTrackedPoints(const std::vector<cv::KeyPoint> &vKeys, const std::vector<MapPoint *> &vMPs, cv::Mat &im);
+
+    Plane *DetectPlane(const cv::Mat Tcw, const std::vector<MapPoint *> &vMPs, const int iterations = 50);
 
     // frame rate
     float mFPS, mT;
-    float fx,fy,cx,cy;
+    float fx, fy, cx, cy;
 
     // Last processed image and computed pose by the SLAM
     std::mutex mMutexPoseImage;
@@ -107,13 +122,11 @@ private:
     cv::Mat mImage;
     int mStatus;
     std::vector<cv::KeyPoint> mvKeys;
-    std::vector<MapPoint*> mvMPs;
+    std::vector<MapPoint *> mvMPs;
 
 };
 
-
 }
-
 
 #endif // VIEWERAR_H
 	
