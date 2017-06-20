@@ -23,6 +23,8 @@ import pprint
 import cv2
 import random
 from socketCom.Communication import Server
+from socket import error as SocketError
+import errno
 from config.config import config, update_config
 from utils.image import resize, transform
 import numpy as np
@@ -234,22 +236,33 @@ def main(args):
     server = Server(**kwargs)
 
     while True:
-        color_imgs = server.get_images()
-        depth_imgs = server.get_images()
-        color_img = color_imgs[0]
-        depth_img = depth_imgs[0]
-        cods, bimsks, names = fcis_seg(color_img, classes, predictor, args)#fcis_seg(sym, color_img, classes, arg_params, aux_params, args)
-        seg_result = {}
-        for cod, bimsk, name in zip(cods, bimsks, names):
-            if name not in seg_result:
-                seg_result[name] = []
-            depth_roi = depth_img[cod[1]:cod[3] + 1, cod[0]:cod[2] + 1, 0]
-            cloud = generate_point_cloud(depth_roi, bimsk, cod)
-            # color_roi = color_img[cod[1]:cod[3] + 1, cod[0]:cod[2] + 1, :]
-            # show_mask(color_roi, bimsk, name)
-            centroid = cal_centroid(cloud)
-            seg_result[name].append(centroid)
-        server.send_seg_result(seg_result)
+        try:
+            color_imgs = server.get_images()
+            depth_imgs = server.get_images()
+            color_img = color_imgs[0]
+            depth_img = depth_imgs[0]
+            cods, bimsks, names = fcis_seg(color_img, classes, predictor, args)#fcis_seg(sym, color_img, classes, arg_params, aux_params, args)
+            seg_result = {}
+            for cod, bimsk, name in zip(cods, bimsks, names):
+                if name not in seg_result:
+                    seg_result[name] = []
+                depth_roi = depth_img[cod[1]:cod[3] + 1, cod[0]:cod[2] + 1, 0]
+                cloud = generate_point_cloud(depth_roi, bimsk, cod)
+                # color_roi = color_img[cod[1]:cod[3] + 1, cod[0]:cod[2] + 1, :]
+                # show_mask(color_roi, bimsk, name)
+                centroid = cal_centroid(cloud)
+                seg_result[name].append(centroid)
+            server.send_seg_result(seg_result)
+        except SocketError as e:
+            if e.errno == errno.ECONNRESET:
+                print("Connection reset by peer, waiting for reconnnection...")
+                server.setup_connect_server()
+            else:
+                print(e)
+                sys.exit("Unexpected socket error occurred")
+        except Exception as e:
+            print(e)
+            sys.exit("Unexpected error occurred")
 
 
 if __name__ == '__main__':

@@ -7,7 +7,8 @@ import sys
 
 import numpy as np
 import struct
-
+import errno
+from socket import error as SocketError
 
 class Server:
     def __init__(self, *args, **kwargs):
@@ -54,13 +55,19 @@ class Server:
         bytesize = struct.calcsize("i") * 6
         nbytes = self.conn.recv(bytesize, socket.MSG_WAITALL)
         if len(nbytes) != bytesize:
-            raise Exception("Incomplete Header Info received, need reconnection!")
+            err = SocketError()
+            err.errno = errno.ECONNRESET
+            raise err
+            # raise Exception("Incomplete Header Info received, need reconnection!")
 
         value = struct.unpack("i" * 6, nbytes)
         self.numImages, self.imWidth, self.imHeight, self.imChannels, \
         self.imgSize, self.imType = (int(i) for i in value)
         if self.imType not in self.int_to_cvtype:
-            raise Exception('Cannot recognize the image type')
+            err = SocketError()
+            err.errno = errno.ECONNRESET
+            raise err
+            # raise Exception('Cannot recognize the image type')
         # print("numImage: %d, imHeight: %d, imWidth: %d, "
         #       "imChannels: %d, imgSize: %d, imType: %s" % \
         #       (self.numImages, self.imHeight, self.imWidth,
@@ -73,7 +80,6 @@ class Server:
             if img:
                 img = self.decode_image(img)
                 imgs.append(img)
-            'Color image and Depth image should have same height and width'
         return imgs
 
     def send_seg_result(self, cls_pos):
