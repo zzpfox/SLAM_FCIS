@@ -175,6 +175,7 @@ void Viewer::Run()
         }
 
         if (CheckFinish())
+            mpMapDrawer->CloseOctoMapThread();
             break;
     }
 

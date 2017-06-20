@@ -134,6 +134,7 @@ void Map::clear()
     mnMaxKFid = 0;
     mvpReferenceMapPoints.clear();
     mvpKeyFrameOrigins.clear();
+    unique_lock<mutex> lock(mMutexObjectMap);
     mObjectMap.clear();
 }
 

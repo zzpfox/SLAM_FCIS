@@ -48,6 +48,10 @@ public:
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 
+    void clear();
+
+    void CloseOctoMapThread();
+
     void DrawPointCloud();
 
     void DrawMapPoints();

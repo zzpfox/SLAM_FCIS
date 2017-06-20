@@ -50,7 +50,7 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
     :
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpSystem(pSys), mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer),
-    mpMap(pMap), mnLastRelocFrameId(0)
+    mpMap(pMap), mnLastRelocFrameId(0), mbSegStop(false)
 {
     // Load camera parameters from settings file
 
@@ -145,7 +145,7 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
         else
             mDepthMapFactor = 1.0f / mDepthMapFactor;
     }
-    mSegmentation.reset(new std::thread(&Tracking::PerformSegmentation, this));
+    StartSegmentationThread();
     boost::filesystem::path path{"./DepthImages"};
     boost::filesystem::remove_all(path);
     boost::filesystem::create_directories(path);
@@ -1085,7 +1085,7 @@ void Tracking::CreateNewKeyFrame()
 
 void Tracking::PerformSegmentation()
 {
-    while (true) {
+    while (!mbSegStop) {
         std::unique_lock<std::mutex> lck(mMutexImagesQueue);
         if (!mImagesQueue.empty()) {
             ImagePair images;
@@ -1102,7 +1102,6 @@ void Tracking::PerformSegmentation()
             SaveSegResultToMap(clsPosPairs, images.keyFrameId);
         }
     }
-
 }
 
 void Tracking::SaveSegResultToMap(const Client::ClsPosPairs &clsPosPairs, long unsigned int keyFrameId)
@@ -1492,7 +1491,6 @@ bool Tracking::Relocalization()
 
 void Tracking::Reset()
 {
-
     cout << "System Reseting" << endl;
     if (mpViewer) {
         mpViewer->RequestStop();
@@ -1517,6 +1515,7 @@ void Tracking::Reset()
 
     // Clear Map (this erase MapPoints and KeyFrames)
     mpMap->clear();
+    mpMapDrawer->clear();
 
     KeyFrame::nNextId = 0;
     Frame::nNextId = 0;
@@ -1534,6 +1533,26 @@ void Tracking::Reset()
     if (mpViewer)
         mpViewer->Release();
 }
+
+void Tracking::CloseSegmentaionThread()
+{
+    mbSegStop = true;
+    mSegmentation->join();
+    mSegmentation.reset();
+}
+
+void Tracking::StartSegmentationThread()
+{
+    if (mSegmentation)
+    {
+        mbSegStop = true;
+        mSegmentation->join();
+    }
+    std::queue<ImagePair>().swap(mImagesQueue); // clear images queue
+    mbSegStop = false;
+    mSegmentation.reset(new std::thread(&Tracking::PerformSegmentation, this));
+}
+
 
 void Tracking::ChangeCalibration(const string &strSettingPath)
 {

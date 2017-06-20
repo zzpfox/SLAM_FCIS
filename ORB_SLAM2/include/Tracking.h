@@ -91,6 +91,12 @@ public:
     // Use this function if you have deactivated local mapping and you only want to localize the camera.
     void InformOnlyTracking(const bool &flag);
 
+    void Reset();
+
+    void CloseSegmentaionThread();
+
+    void StartSegmentationThread();
+
 public:
 
     // Tracking states
@@ -130,7 +136,8 @@ public:
     // True if local mapping is deactivated and we are performing only localization
     bool mbOnlyTracking;
 
-    void Reset();
+
+
 
 protected:
 
@@ -250,6 +257,7 @@ protected:
     const int mcQueueSize = 15;
     std::queue<ImagePair> mImagesQueue;
     std::unique_ptr<std::thread> mSegmentation;
+    bool mbSegStop;
 };
 
 } //namespace ORB_SLAM

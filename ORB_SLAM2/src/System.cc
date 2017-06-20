@@ -330,6 +330,7 @@ void System::Reset()
 
 void System::Shutdown()
 {
+    mpTracker->CloseSegmentaionThread();
     mpLocalMapper->RequestFinish();
     mpLoopCloser->RequestFinish();
     if (mpViewer) {

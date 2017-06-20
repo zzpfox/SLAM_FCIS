@@ -126,7 +126,7 @@ protected:
     std::set<std::shared_ptr<MapPoint> > mspMapPoints;
     std::set<std::shared_ptr<KeyFrame> > mspKeyFrames;
 
-    std::vector<std::shared_ptr<MapPoint>> mvpReferenceMapPoints;
+    std::vector<std::shared_ptr<MapPoint> > mvpReferenceMapPoints;
 
     long unsigned int mnMaxKFid;
 
