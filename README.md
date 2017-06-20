@@ -3,7 +3,7 @@
 * Note: This repository is mainly built upon [ORB_SLAM2](https://github.com/raulmur/ORB_SLAM2) and [FCIS](https://github.com/msracver/FCIS). Many thanks for their great work.
 
 ## Installation
-Refer to the corresponding original repositories ([ORB_SLAM2](https://github.com/raulmur/ORB_SLAM2) and [FCIS](https://github.com/msracver/FCIS) for installation tutorial.
+Refer to the corresponding original repositories ([ORB_SLAM2](https://github.com/raulmur/ORB_SLAM2) and [FCIS](https://github.com/msracver/FCIS) for installation tutorial).
 
 ## Run
 
