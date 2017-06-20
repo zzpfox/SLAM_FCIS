@@ -29,23 +29,29 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
-
+#include "geometry_msgs/PoseStamped.h"
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
-
+#include "Converter.h"
 using namespace std;
 
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System *pSLAM)
-        : mpSLAM(pSLAM)
-    {}
+    ImageGrabber(ORB_SLAM2::System *pSLAM, ros::NodeHandle& n)
+        : mpSLAM(pSLAM), mn(n)
+    {
+        mPosPub = mn.advertise<geometry_msgs::PoseStamped>("camera_pose", 5);
+    }
 
     void GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sensor_msgs::ImageConstPtr &msgD);
 
+    void PublishPose(cv::Mat Tcw);
+
     ORB_SLAM2::System *mpSLAM;
+    ros::Publisher mPosPub;
+    ros::NodeHandle mn;
 };
 
 int main(int argc, char **argv)
@@ -67,10 +73,9 @@ int main(int argc, char **argv)
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true);
-
-    ImageGrabber igb(&SLAM);
-
     ros::NodeHandle nh;
+    ImageGrabber igb(&SLAM, nh);
+
 
     message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh, "/kinect2/qhd/image_color_rect", 1);
     message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh, "/kinect2/qhd/image_depth_rect", 1);
@@ -112,7 +117,29 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sens
         return;
     }
 
-    mpSLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, cv_ptrRGB->header.stamp.toSec());
+    cv::Mat Tcw = mpSLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, cv_ptrRGB->header.stamp.toSec());
+    PublishPose(Tcw);
+}
+
+void ImageGrabber::PublishPose(cv::Mat Tcw)
+{
+    geometry_msgs::PoseStamped poseMSG;
+    if (!Tcw.empty())
+    {
+        cv::Mat Rwc = Tcw.rowRange(0, 3).colRange(0, 3).t();
+        cv::Mat twc = -Rwc * Tcw.rowRange(0, 3).col(3);
+        vector<float> q = ORB_SLAM2::Converter::toQuaternion(Rwc);
+        poseMSG.pose.position.x = twc.at<float>(0);
+        poseMSG.pose.position.y = twc.at<float>(1);
+        poseMSG.pose.position.z = twc.at<float>(2);
+        poseMSG.pose.orientation.x = q[0];
+        poseMSG.pose.orientation.y = q[1];
+        poseMSG.pose.orientation.z = q[2];
+        poseMSG.pose.orientation.w = q[3];
+        poseMSG.header.frame_id = "camera";
+        poseMSG.header.stamp = ros::Time::now();
+        mPosPub.publish(poseMSG);
+    }
 }
 
 
