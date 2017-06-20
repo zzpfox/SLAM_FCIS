@@ -1,4 +1,29 @@
+# ./bash.sh or ./bash.sh -c clean
 echo "Configuring and building Thirdparty/DBoW2 ..."
+
+while getopts c: option
+do
+ case "${option}"
+ in
+ c) CLEAN=${OPTARG};;
+ esac
+done
+
+echo $CLEAN
+if ! [ -z $CLEAN ]; then
+    echo "Cleaning the built files first ..."
+    cd Thirdparty/DBoW2
+    echo "Removing build folder in Thirdparty/DBoW2"
+    rm -rf build
+    cd ../g2o
+    echo "Removing build folder in Thirdparty/g2o"
+    rm -rf build
+    cd ../../
+    echo "Removing build folder in ."
+    rm -rf build
+else
+    echo "Build without Cleaning First ..."
+fi
 
 cd Thirdparty/DBoW2
 mkdir build
@@ -17,10 +42,26 @@ make -j8
 
 cd ../../../
 
-echo "Uncompress vocabulary ..."
+
 
 cd Vocabulary
-tar -xf ORBvoc.txt.tar.gz
+TxtVocFile=./ORBvoc.txt
+TxtVocSize="145250924"
+if [ -e $TxtVocFile ]
+then
+    TXTVOCFILESIZE=$(stat -c%s "$TxtVocFile")
+    if [ $TXTVOCFILESIZE -eq $TxtVocSize ]
+    then 
+        echo "Txt Vocabulary already exists"
+    else
+        echo "Reuncompress vocabulary ..."
+        tar -xf ORBvoc.txt.tar.gz
+    fi
+else
+    echo "Uncompress vocabulary ..."
+    tar -xf ORBvoc.txt.tar.gz
+fi
+
 cd ..
 
 echo "Configuring and building ORB_SLAM2 ..."
@@ -33,11 +74,11 @@ make -j8
 
 cd ..
 BinVocFile=./Vocabulary/ORBvoc.bin
-VocSize="44365017"
+BinVocSize="44365017"
 if [ -e $BinVocFile ]
 then
-    VOCFILESIZE=$(stat -c%s "$BinVocFile")
-    if [ $VOCFILESIZE -eq $VocSize ]
+    BINVOCFILESIZE=$(stat -c%s "$BinVocFile")
+    if [ $BINVOCFILESIZE -eq $BinVocSize ]
     then 
         echo "Binary Vocabulary already exists"
     else
