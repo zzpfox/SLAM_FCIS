@@ -26,3 +26,5 @@ And `Show SegObjects` will show the objects' type and their corresponding positi
 ### Major Modifications compared to the master branch
 * Python Socket server in FCIS will reset to accept new connections automatically when the client is shutdown.
 * ORB-SLAM2 now uses `shared_ptr`, 'weak_ptr', and `unique_ptr` instead of the usual pointers. Note that the original code in ORB-SLAM2 uses the pointers generted by `new`, and there is serious memory leak problem as there is hardly any corresponding `delete`. 
+* ORB-SLAM2 now support boost serialization over MapPoints, KeyFrames, Map. So the whole program can be saved and loaded again.
+If we reuse the map previously stored, the program will load in the map and enter the `Localization Mode` in the first place. After the camera has been successfully relocalized, you can manually turn off the `Localization Mode`.
