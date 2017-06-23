@@ -68,7 +68,6 @@ void LocalMapping::Run()
                 // Find more matches in neighbor keyframes and fuse point duplications
                 SearchInNeighbors();
             }
-
             mbAbortBA = false;
             if (!CheckNewKeyFrames() && !stopRequested()) {
                 // Local BA
@@ -78,7 +77,6 @@ void LocalMapping::Run()
                 // Check redundant local Keyframes
                 KeyFrameCulling();
             }
-
             mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
         }
         else if (Stop()) {

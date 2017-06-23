@@ -67,7 +67,7 @@ public:
 
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-           const bool bUseViewer = true);
+           const bool bUseViewer = true, const bool bReuseMap = false);
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
@@ -122,8 +122,8 @@ public:
     void SaveTrajectoryKITTI(const string &filename);
 
     // TODO: Save/Load functions
-    // SaveMap(const string &filename);
-    // LoadMap(const string &filename);
+    void SaveMap();
+    void LoadMap();
 
     // Information from most recent processed frame
     // You can call this right after TrackMonocular (or stereo or RGBD)
@@ -135,8 +135,11 @@ public:
 
 private:
 
+    std::string msMapFileName;
     // Input sensor
     eSensor mSensor;
+
+    std::string msDataFolder;
 
     // ORB vocabulary used for place recognition and feature matching.
     std::shared_ptr<ORBVocabulary> mpVocabulary;
@@ -185,6 +188,8 @@ private:
     std::vector<std::weak_ptr<MapPoint>  > mTrackedMapPoints;
     std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
     std::mutex mMutexState;
+
+    bool mbLoadMapSuccess;
 };
 
 }// namespace ORB_SLAM

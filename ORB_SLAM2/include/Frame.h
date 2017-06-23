@@ -52,20 +52,14 @@ public:
     // Constructor for stereo cameras.
     Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeStamp,
           std::shared_ptr<ORBextractor> extractorLeft,
-          std::shared_ptr<ORBextractor> extractorRight, std::shared_ptr<ORBVocabulary> voc,
-          cv::Mat &K, cv::Mat &distCoef, const float &bf,
-          const float &thDepth);
+          std::shared_ptr<ORBextractor> extractorRight);
 
     // Constructor for RGB-D cameras.
     Frame(const cv::Mat &imGray, const cv::Mat &imColor, const cv::Mat &imDepth, const double &timeStamp,
-          std::shared_ptr<ORBextractor> extractor, std::shared_ptr<ORBVocabulary> voc,
-          cv::Mat &K, cv::Mat &distCoef, const float &bf,
-          const float &thDepth);
+          std::shared_ptr<ORBextractor> extractor);
 
     // Constructor for Monocular cameras.
-    Frame(const cv::Mat &imGray, const double &timeStamp, std::shared_ptr<ORBextractor>extractor,
-          std::shared_ptr<ORBVocabulary>voc, cv::Mat &K,
-          cv::Mat &distCoef, const float &bf, const float &thDepth);
+    Frame(const cv::Mat &imGray, const double &timeStamp, std::shared_ptr<ORBextractor> extractor);
 
     // Extract ORB on the image. 0 for left image and 1 for right image.
     void ExtractORB(int flag, const cv::Mat &im);
@@ -111,9 +105,20 @@ public:
     // Backprojects a keypoint (if stereo/depth info available) into 3D world coordinates.
     cv::Mat UnprojectStereo(const int &i);
 
+    static void InitializeStaticVariables(std::shared_ptr<ORBextractor> &extractorLeft,
+                                          std::shared_ptr<ORBVocabulary> voc,
+                                          cv::Mat &K,
+                                          cv::Mat &distCoef,
+                                          const float &bf,
+                                          float &thDepth,
+                                          float &rows,
+                                          float &cols);
+
+    static void ComputeImageBoundsByColsRows(float rows, float cols);
+
 public:
     // Vocabulary used for relocalization.
-    std::shared_ptr<ORBVocabulary> mpORBvocabulary;
+    static std::shared_ptr<ORBVocabulary> mpORBvocabulary;
 
     // Feature extractor. The right is used only in the stereo case.
     std::shared_ptr<ORBextractor> mpORBextractorLeft;
@@ -123,24 +128,24 @@ public:
     double mTimeStamp;
 
     // Calibration matrix and OpenCV distortion parameters.
-    cv::Mat mK;
+    static cv::Mat mK;
     static float fx;
     static float fy;
     static float cx;
     static float cy;
     static float invfx;
     static float invfy;
-    cv::Mat mDistCoef;
+    static cv::Mat mDistCoef;
 
     // Stereo baseline multiplied by fx.
-    float mbf;
+    static float mbf;
 
     // Stereo baseline in meters.
-    float mb;
+    static float mb;
 
     // Threshold close/far points. Close points are inserted from 1 view.
     // Far points are inserted as in the monocular case from 2 views.
-    float mThDepth;
+    static float mThDepth;
 
     // Number of KeyPoints.
     int N;
@@ -186,13 +191,13 @@ public:
     std::weak_ptr<KeyFrame> mpReferenceKF;
 
     // Scale pyramid info.
-    int mnScaleLevels;
-    float mfScaleFactor;
-    float mfLogScaleFactor;
-    vector<float> mvScaleFactors;
-    vector<float> mvInvScaleFactors;
-    vector<float> mvLevelSigma2;
-    vector<float> mvInvLevelSigma2;
+    static int mnScaleLevels;
+    static float mfScaleFactor;
+    static float mfLogScaleFactor;
+    static vector<float> mvScaleFactors;
+    static vector<float> mvInvScaleFactors;
+    static vector<float> mvLevelSigma2;
+    static vector<float> mvInvLevelSigma2;
 
     // Undistorted Image Bounds (computed once).
     static float mnMinX;
@@ -200,7 +205,6 @@ public:
     static float mnMinY;
     static float mnMaxY;
 
-    static bool mbInitialComputations;
 
 private:
 

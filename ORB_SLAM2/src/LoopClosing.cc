@@ -553,7 +553,6 @@ void LoopClosing::CorrectLoop()
     // Fuse duplications.
     SearchAndFuse(CorrectedSim3);
 
-
     // After the MapPoint fusion, new links in the covisibility graph will appear attaching both sides of the loop
     map<std::weak_ptr<KeyFrame>, set<std::weak_ptr<KeyFrame>,
                                      std::owner_less<std::weak_ptr<KeyFrame> > >,
@@ -693,24 +692,26 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)
             while (!mpLocalMapper->isStopped() && !mpLocalMapper->isFinished()) {
                 usleep(1000);
             }
-
             // Get Map Mutex
             unique_lock<mutex> lock(mpMap->mMutexMapUpdate);
-
             // Correct keyframes starting at map first keyframe
             list<std::weak_ptr<KeyFrame> > lpKFtoCheck(mpMap->mvpKeyFrameOrigins.begin(), mpMap->mvpKeyFrameOrigins.end());
-
             while (!lpKFtoCheck.empty()) {
                 std::weak_ptr<KeyFrame> pKF = lpKFtoCheck.front();
                 if (pKF.expired())
+                {
+                    lpKFtoCheck.pop_front();
                     continue;
+                }
                 std::shared_ptr<KeyFrame> spKF = pKF.lock();
                 const set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > > sChilds = spKF->GetChilds();
                 cv::Mat Twc = spKF->GetPoseInverse();
                 for (set<std::weak_ptr<KeyFrame>, std::owner_less<std::weak_ptr<KeyFrame> > >::const_iterator sit = sChilds.begin(); sit != sChilds.end(); sit++) {
                     std::weak_ptr<KeyFrame> pChild = *sit;
                     if (pChild.expired())
+                    {
                         continue;
+                    }
                     std::shared_ptr<KeyFrame> spChild = pChild.lock();
                     if (spChild->mnBAGlobalForKF != nLoopKF) {
                         cv::Mat Tchildc = spChild->GetPose() * Twc;
@@ -728,7 +729,6 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)
 
             // Correct MapPoints
             const vector<std::shared_ptr<MapPoint>  > vpMPs = mpMap->GetAllMapPoints();
-
             for (size_t i = 0; i < vpMPs.size(); i++) {
                 std::shared_ptr<MapPoint> pMP = vpMPs[i];
 

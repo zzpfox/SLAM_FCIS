@@ -29,8 +29,8 @@ Map::Map()
 {
 }
 
-Map::Map(cv::FileStorage &fsSettings)
-    : mnMaxKFid(0), mnBigChangeIdx(0)
+Map::Map(cv::FileStorage &fsSettings, std::string dataDir)
+    : mnMaxKFid(0), mnBigChangeIdx(0), msDataFolder(dataDir)
 {
     CreateLookup(fsSettings);
     mDepthMapFactor = static_cast<float>(fsSettings["DepthMapFactor"]);
@@ -174,9 +174,11 @@ void Map::DeleteSegObjInKeyFrame(std::shared_ptr<KeyFrame> pKF)
 void Map::ShowSegResult()
 {
     unique_lock<mutex> lock(mMutexObjectMap);
-    boost::filesystem::path path{"./Results"};
-    boost::filesystem::create_directories(path);
-    std::string segfile("./Results/seg.txt");
+    boost::filesystem::path resultDir("Results");
+    boost::filesystem::path dataDir(msDataFolder);
+    boost::filesystem::path resultPath = dataDir / resultDir;
+    boost::filesystem::create_directories(resultPath);
+    std::string segfile(resultPath.string() + "/seg.txt");
     ofstream segFileOut(segfile, ios::out | ios::binary);
     if (segFileOut.is_open()) {
         std::cout << "\x1B[35mPrinting the Hash Maps\x1B[0m" << std::endl;
@@ -191,6 +193,11 @@ void Map::ShowSegResult()
                 segFileOut << y.second << std::endl;
             }
         }
+    }
+    std::ofstream os(resultPath.string() + "/seg.bin");
+    {
+        boost::archive::binary_oarchive oa(os, boost::archive::no_header);
+        oa << mObjectMap;
     }
 }
 } //namespace ORB_SLAM

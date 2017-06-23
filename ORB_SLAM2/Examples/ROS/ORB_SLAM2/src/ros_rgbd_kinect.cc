@@ -65,14 +65,25 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "RGBD");
     ros::start();
 
-    if (argc != 3) {
-        cerr << endl << "Usage: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings" << endl;
+    if (argc != 3 && argc != 4) {
+        cerr << endl << "Usage: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings" << endl
+            <<"Or: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings reusemap" << endl;
         ros::shutdown();
         return 1;
     }
+    bool reuseMap = false;
+    std::string argvThree;
+    if (argc == 4)
+    {
+        argvThree = argv[3];
+        if (argvThree == "reusemap")
+        {
+            reuseMap = true;
+        }
+    }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true);
+    ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true, reuseMap);
     ros::NodeHandle nh;
     ImageGrabber igb(&SLAM, nh);
 
@@ -82,7 +93,6 @@ int main(int argc, char **argv)
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
     message_filters::Synchronizer<sync_pol> sync(sync_pol(10), rgb_sub, depth_sub);
     sync.registerCallback(boost::bind(&ImageGrabber::GrabRGBD, &igb, _1, _2));
-
     ros::spin();
 
     // Stop all threads
@@ -90,9 +100,10 @@ int main(int argc, char **argv)
 
     // Save camera trajectory
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+    SLAM.SaveMap();
 
     ros::shutdown();
-
+    sleep(2);
     return 0;
 }
 
@@ -116,7 +127,6 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sens
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-
     cv::Mat Tcw = mpSLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, cv_ptrRGB->header.stamp.toSec());
     PublishPose(Tcw);
 }

@@ -28,31 +28,38 @@ namespace ORB_SLAM2
 
 long unsigned int Frame::nNextId = 0;
 
-bool Frame::mbInitialComputations = true;
+cv::Mat Frame::mK, Frame::mDistCoef;
 
 float Frame::cx, Frame::cy, Frame::fx, Frame::fy, Frame::invfx, Frame::invfy;
 
-float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
+float Frame::mbf, Frame::mb, Frame::mThDepth;
 
 float Frame::mfGridElementWidthInv, Frame::mfGridElementHeightInv;
+
+float Frame::mnMinX, Frame::mnMinY, Frame::mnMaxX, Frame::mnMaxY;
+
+std::shared_ptr<ORBVocabulary> Frame::mpORBvocabulary;
+
+int Frame::mnScaleLevels;
+float Frame::mfScaleFactor;
+float Frame::mfLogScaleFactor;
+vector<float> Frame::mvScaleFactors;
+vector<float> Frame::mvInvScaleFactors;
+vector<float> Frame::mvLevelSigma2;
+vector<float> Frame::mvInvLevelSigma2;
 
 Frame::Frame()
 {}
 
 //Copy Constructor
 Frame::Frame(const Frame &frame)
-    : mpORBvocabulary(frame.mpORBvocabulary), mpORBextractorLeft(frame.mpORBextractorLeft),
-      mpORBextractorRight(frame.mpORBextractorRight),
-      mTimeStamp(frame.mTimeStamp), mK(frame.mK.clone()), mDistCoef(frame.mDistCoef.clone()),
-      mbf(frame.mbf), mb(frame.mb), mThDepth(frame.mThDepth), N(frame.N), mvKeys(frame.mvKeys),
+    : mpORBextractorLeft(frame.mpORBextractorLeft), mpORBextractorRight(frame.mpORBextractorRight),
+      mTimeStamp(frame.mTimeStamp),N(frame.N), mvKeys(frame.mvKeys),
       mvKeysRight(frame.mvKeysRight), mvKeysUn(frame.mvKeysUn), mvuRight(frame.mvuRight),
       mvDepth(frame.mvDepth), mBowVec(frame.mBowVec), mFeatVec(frame.mFeatVec),
       mDescriptors(frame.mDescriptors.clone()), mDescriptorsRight(frame.mDescriptorsRight.clone()),
       mvpMapPoints(frame.mvpMapPoints), mvbOutlier(frame.mvbOutlier), mnId(frame.mnId),
-      mpReferenceKF(frame.mpReferenceKF), mnScaleLevels(frame.mnScaleLevels),
-      mfScaleFactor(frame.mfScaleFactor), mfLogScaleFactor(frame.mfLogScaleFactor),
-      mvScaleFactors(frame.mvScaleFactors), mvInvScaleFactors(frame.mvInvScaleFactors),
-      mvLevelSigma2(frame.mvLevelSigma2), mvInvLevelSigma2(frame.mvInvLevelSigma2)
+      mpReferenceKF(frame.mpReferenceKF)
 {
     for (int i = 0; i < FRAME_GRID_COLS; i++)
         for (int j = 0; j < FRAME_GRID_ROWS; j++)
@@ -62,23 +69,13 @@ Frame::Frame(const Frame &frame)
         SetPose(frame.mTcw);
 }
 
-Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeStamp, std::shared_ptr<ORBextractor> extractorLeft,
-             std::shared_ptr<ORBextractor> extractorRight, std::shared_ptr<ORBVocabulary> voc, cv::Mat &K, cv::Mat &distCoef, const float &bf,
-             const float &thDepth)
-    : mpORBvocabulary(voc), mpORBextractorLeft(extractorLeft), mpORBextractorRight(extractorRight),
-      mTimeStamp(timeStamp), mK(K.clone()), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
+Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeStamp,
+             std::shared_ptr<ORBextractor> extractorLeft,
+             std::shared_ptr<ORBextractor> extractorRight)
+    : mTimeStamp(timeStamp),mpORBextractorLeft(extractorLeft), mpORBextractorRight(extractorRight)
 {
     // Frame ID
     mnId = nNextId++;
-
-    // Scale Level Info
-    mnScaleLevels = mpORBextractorLeft->GetLevels();
-    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
-    mfLogScaleFactor = log(mfScaleFactor);
-    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
-    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
-    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
-    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction
     thread threadLeft(&Frame::ExtractORB, this, 0, imLeft);
@@ -98,47 +95,15 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mvpMapPoints = std::vector<std::shared_ptr<MapPoint> >(N, std::shared_ptr<MapPoint>() );
     mvbOutlier = vector<bool>(N, false);
 
-
-    // This is done only for the first Frame (or after a change in the calibration)
-    if (mbInitialComputations) {
-        ComputeImageBounds(imLeft);
-
-        mfGridElementWidthInv = static_cast<float>(FRAME_GRID_COLS) / (mnMaxX - mnMinX);
-        mfGridElementHeightInv = static_cast<float>(FRAME_GRID_ROWS) / (mnMaxY - mnMinY);
-
-        fx = K.at<float>(0, 0);
-        fy = K.at<float>(1, 1);
-        cx = K.at<float>(0, 2);
-        cy = K.at<float>(1, 2);
-        invfx = 1.0f / fx;
-        invfy = 1.0f / fy;
-
-        mbInitialComputations = false;
-    }
-
-    mb = mbf / fx;
-
     AssignFeaturesToGrid();
 }
 
 Frame::Frame(const cv::Mat &imGray, const cv::Mat &imColor, const cv::Mat &imDepth, const double &timeStamp,
-             std::shared_ptr<ORBextractor> extractor, std::shared_ptr<ORBVocabulary>voc, cv::Mat &K, cv::Mat &distCoef, const float &bf,
-             const float &thDepth)
-    : mpORBvocabulary(voc), mpORBextractorLeft(extractor),
-      mTimeStamp(timeStamp), mK(K.clone()), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
-      mImColor(imColor), mImDepth(imDepth)
+             std::shared_ptr<ORBextractor> extractor):
+    mTimeStamp(timeStamp), mImColor(imColor), mImDepth(imDepth),mpORBextractorLeft(extractor)
 {
     // Frame ID
     mnId = nNextId++;
-
-    // Scale Level Info
-    mnScaleLevels = mpORBextractorLeft->GetLevels();
-    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
-    mfLogScaleFactor = log(mfScaleFactor);
-    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
-    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
-    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
-    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction
     ExtractORB(0, imGray);
@@ -155,45 +120,14 @@ Frame::Frame(const cv::Mat &imGray, const cv::Mat &imColor, const cv::Mat &imDep
     mvpMapPoints = std::vector<std::shared_ptr<MapPoint> >(N, std::shared_ptr<MapPoint>() );
     mvbOutlier = vector<bool>(N, false);
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if (mbInitialComputations) {
-        ComputeImageBounds(imGray);
-
-        mfGridElementWidthInv = static_cast<float>(FRAME_GRID_COLS) / static_cast<float>(mnMaxX - mnMinX);
-        mfGridElementHeightInv = static_cast<float>(FRAME_GRID_ROWS) / static_cast<float>(mnMaxY - mnMinY);
-
-        fx = K.at<float>(0, 0);
-        fy = K.at<float>(1, 1);
-        cx = K.at<float>(0, 2);
-        cy = K.at<float>(1, 2);
-        invfx = 1.0f / fx;
-        invfy = 1.0f / fy;
-
-        mbInitialComputations = false;
-    }
-
-    mb = mbf / fx;
-
     AssignFeaturesToGrid();
 }
 
-Frame::Frame(const cv::Mat &imGray, const double &timeStamp, std::shared_ptr<ORBextractor> extractor,
-             std::shared_ptr<ORBVocabulary> voc,
-             cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
-    : mpORBvocabulary(voc), mpORBextractorLeft(extractor),
-      mTimeStamp(timeStamp), mK(K.clone()), mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth)
+Frame::Frame(const cv::Mat &imGray, const double &timeStamp, std::shared_ptr<ORBextractor> extractor)
+    : mTimeStamp(timeStamp), mpORBextractorLeft(extractor)
 {
     // Frame ID
     mnId = nNextId++;
-
-    // Scale Level Info
-    mnScaleLevels = mpORBextractorLeft->GetLevels();
-    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
-    mfLogScaleFactor = log(mfScaleFactor);
-    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
-    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
-    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
-    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
 
     // ORB extraction
     ExtractORB(0, imGray);
@@ -212,24 +146,6 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, std::shared_ptr<ORB
     mvpMapPoints = std::vector<std::shared_ptr<MapPoint> >(N, std::shared_ptr<MapPoint>() );
     mvbOutlier = vector<bool>(N, false);
 
-    // This is done only for the first Frame (or after a change in the calibration)
-    if (mbInitialComputations) {
-        ComputeImageBounds(imGray);
-
-        mfGridElementWidthInv = static_cast<float>(FRAME_GRID_COLS) / static_cast<float>(mnMaxX - mnMinX);
-        mfGridElementHeightInv = static_cast<float>(FRAME_GRID_ROWS) / static_cast<float>(mnMaxY - mnMinY);
-
-        fx = K.at<float>(0, 0);
-        fy = K.at<float>(1, 1);
-        cx = K.at<float>(0, 2);
-        cy = K.at<float>(1, 2);
-        invfx = 1.0f / fx;
-        invfy = 1.0f / fy;
-
-        mbInitialComputations = false;
-    }
-
-    mb = mbf / fx;
 
     AssignFeaturesToGrid();
 }
@@ -667,4 +583,75 @@ cv::Mat Frame::UnprojectStereo(const int &i)
         return cv::Mat();
 }
 
+void Frame::ComputeImageBoundsByColsRows(float rows, float cols)
+{
+    if (mDistCoef.at<float>(0) != 0.0) {
+        cv::Mat mat(4, 2, CV_32F);
+        mat.at<float>(0, 0) = 0.0;
+        mat.at<float>(0, 1) = 0.0;
+        mat.at<float>(1, 0) = cols;
+        mat.at<float>(1, 1) = 0.0;
+        mat.at<float>(2, 0) = 0.0;
+        mat.at<float>(2, 1) = rows;
+        mat.at<float>(3, 0) = cols;
+        mat.at<float>(3, 1) = rows;
+
+        // Undistort corners
+        mat = mat.reshape(2);
+        cv::undistortPoints(mat, mat, mK, mDistCoef, cv::Mat(), mK);
+        mat = mat.reshape(1);
+
+        mnMinX = min(mat.at<float>(0, 0), mat.at<float>(2, 0));
+        mnMaxX = max(mat.at<float>(1, 0), mat.at<float>(3, 0));
+        mnMinY = min(mat.at<float>(0, 1), mat.at<float>(1, 1));
+        mnMaxY = max(mat.at<float>(2, 1), mat.at<float>(3, 1));
+
+    }
+    else {
+        mnMinX = 0.0f;
+        mnMaxX = cols;
+        mnMinY = 0.0f;
+        mnMaxY = rows;
+    }
+
+}
+
+void Frame::InitializeStaticVariables(std::shared_ptr<ORBextractor> &extractorLeft,
+                                      std::shared_ptr<ORBVocabulary> voc,
+                                      cv::Mat &K,
+                                      cv::Mat &distCoef,
+                                      const float &bf,
+                                      float &thDepth,
+                                      float &rows,
+                                      float &cols)
+{
+    mpORBvocabulary = voc;
+    mK = K.clone();
+    mDistCoef = distCoef.clone();
+    mbf = bf;
+    mThDepth = thDepth;
+
+    // Scale Level Info
+    mnScaleLevels = extractorLeft->GetLevels();
+    mfScaleFactor = extractorLeft->GetScaleFactor();
+    mfLogScaleFactor = log(mfScaleFactor);
+    mvScaleFactors = extractorLeft->GetScaleFactors();
+    mvInvScaleFactors = extractorLeft->GetInverseScaleFactors();
+    mvLevelSigma2 = extractorLeft->GetScaleSigmaSquares();
+    mvInvLevelSigma2 = extractorLeft->GetInverseScaleSigmaSquares();
+
+    ComputeImageBoundsByColsRows(rows, cols);
+
+    mfGridElementWidthInv = static_cast<float>(FRAME_GRID_COLS) / (mnMaxX - mnMinX);
+    mfGridElementHeightInv = static_cast<float>(FRAME_GRID_ROWS) / (mnMaxY - mnMinY);
+
+    fx = K.at<float>(0, 0);
+    fy = K.at<float>(1, 1);
+    cx = K.at<float>(0, 2);
+    cy = K.at<float>(1, 2);
+    invfx = 1.0f / fx;
+    invfy = 1.0f / fy;
+
+    mb = mbf / fx;
+}
 } //namespace ORB_SLAM

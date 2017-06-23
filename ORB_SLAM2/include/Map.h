@@ -21,6 +21,7 @@
 #ifndef MAP_H
 #define MAP_H
 
+#include "Serialization.h"
 #include "MapPoint.h"
 #include "KeyFrame.h"
 #include <set>
@@ -29,7 +30,6 @@
 #include <mutex>
 #include <iomanip>
 #include <unordered_map>
-
 namespace ORB_SLAM2
 {
 
@@ -37,17 +37,46 @@ class MapPoint;
 
 class KeyFrame;
 
-struct ObjectPos
+//class ObjectPos
+//{
+//public:
+//    ObjectPos()
+//    {}
+//
+//    ObjectPos(const std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > pcs)
+//        : Pcs(pcs)
+//    {}
+//
+//    void addInstance(const Eigen::Vector3d& Pc)
+//    {
+//        Pcs.push_back(Pc);
+//    }
+//
+//    friend std::ostream &operator<<(std::ostream &os, const ObjectPos &pos)
+//    {
+//
+//        os << std::setw(6) << std::fixed << std::setprecision(3);
+//        os << "       " << "Pcs: " << std::endl;
+//        for (auto &Pc: pos.Pcs) {
+//            os << "       " << "[" << Pc[0] << " " << Pc[1] << " " << Pc[2] << "]" << std::endl;
+//        }
+//        os << "       " << "--------------------------" << std::endl;
+//        return os;
+//    }
+//public:
+//    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > Pcs;
+//};
+class ObjectPos
 {
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+public:
     ObjectPos()
     {}
 
-    ObjectPos(const std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > pcs)
+    ObjectPos(const std::vector<std::vector<double> > pcs)
         : Pcs(pcs)
     {}
 
-    void addInstance(const Eigen::Vector3d& Pc)
+    void addInstance(const std::vector<double>& Pc)
     {
         Pcs.push_back(Pc);
     }
@@ -63,14 +92,14 @@ struct ObjectPos
         os << "       " << "--------------------------" << std::endl;
         return os;
     }
-    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > Pcs;
+public:
+    std::vector<std::vector<double> > Pcs;
 };
-
 class Map
 {
 public:
     Map();
-    Map(cv::FileStorage &fsSettings);
+    Map(cv::FileStorage &fsSettings, std::string dataDir);
 
     void AddKeyFrame(std::shared_ptr<KeyFrame> pKF);
 
@@ -104,6 +133,9 @@ public:
 
     void ShowSegResult();
 
+    void CreateLookup(cv::FileStorage &fsSettings);
+
+
     vector<std::weak_ptr<KeyFrame> > mvpKeyFrameOrigins;
 
     std::mutex mMutexMapUpdate;
@@ -117,12 +149,14 @@ public:
 
     std::mutex mMutexObjectMap;
 
-    void CreateLookup(cv::FileStorage &fsSettings);
-
     cv::Mat mLookupX;
     cv::Mat mLookupY;
     float mDepthMapFactor;
+    std::string msDataFolder;
 protected:
+    template <typename Archive>
+    friend void ::boost::serialization::serialize(Archive &ar, Map &map, const unsigned int file_version);
+
     std::set<std::shared_ptr<MapPoint> > mspMapPoints;
     std::set<std::shared_ptr<KeyFrame> > mspKeyFrames;
 

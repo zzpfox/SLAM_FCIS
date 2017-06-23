@@ -45,7 +45,7 @@ class Viewer
 public:
     Viewer(System *pSystem, std::shared_ptr<FrameDrawer> pFrameDrawer,
            std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Tracking> pTracking,
-           const string &strSettingPath);
+           const string &strSettingPath, const bool bReuseMap=false);
 
     // Main thread function. Draw points, keyframes, the current camera pose and the last processed
     // frame. Drawing is refreshed according to the camera fps. We use Pangolin.
@@ -80,6 +80,7 @@ private:
 
     void SetFinish();
 
+    bool mbReuseMap;
     bool mbFinishRequested;
     bool mbFinished;
     std::mutex mMutexFinish;

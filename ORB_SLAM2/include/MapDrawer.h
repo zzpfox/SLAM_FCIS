@@ -41,10 +41,13 @@ public:
     std::shared_ptr<Map> mpMap;
     bool mbCalPointCloud;
     std::unique_ptr<std::thread> mpThreadOctomap;
+    static std::string msDepthImagesPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             int begin, int step);
+
+    void PathPlanning();
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 

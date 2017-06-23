@@ -69,6 +69,7 @@ void Optimizer::BundleAdjustment(const vector<std::shared_ptr<KeyFrame> > &vpKFs
 
     // Set KeyFrame vertices
     for (size_t i = 0; i < vpKFs.size(); i++) {
+
         std::shared_ptr<KeyFrame> spKF = vpKFs[i];
         if (spKF->isBad())
             continue;
@@ -86,6 +87,7 @@ void Optimizer::BundleAdjustment(const vector<std::shared_ptr<KeyFrame> > &vpKFs
 
     // Set MapPoint vertices
     for (size_t i = 0; i < vpMP.size(); i++) {
+
         std::shared_ptr<MapPoint> pMP = vpMP[i];
         if (pMP->isBad())
             continue;
@@ -178,7 +180,6 @@ void Optimizer::BundleAdjustment(const vector<std::shared_ptr<KeyFrame> > &vpKFs
             vbNotIncludedMP[i] = false;
         }
     }
-
     // Optimize!
     optimizer.initializeOptimization();
     optimizer.optimize(nIterations);

@@ -30,7 +30,7 @@
 #include "KeyFrameDatabase.h"
 #include <memory>
 #include <mutex>
-
+#include "Serialization.h"
 namespace ORB_SLAM2
 {
 
@@ -46,6 +46,8 @@ class KeyFrame: public std::enable_shared_from_this<KeyFrame>
 {
 public:
     KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrameDatabase> pKFDB);
+
+    KeyFrame();
 
     // Pose functions
     void SetPose(const cv::Mat &Tcw);
@@ -152,10 +154,20 @@ public:
 
     void DeleteDepthImage();
 
+    static void SetVocabulary(std::shared_ptr<ORBVocabulary> pVocabulary);
+
+    static void InitializeStaticVariables(std::string depthImageFolder);
+
+    void SetMap(std::shared_ptr<Map> map);
+
+    void SetKeyFrameDatabase(std::shared_ptr<KeyFrameDatabase> pKeyFrameDB);
+
+    void RestoreKeyFrame(std::shared_ptr<Map> map, std::shared_ptr<KeyFrameDatabase> pKeyFrameDB);
+
 
     // The following variables are accesed from only 1 thread or never change (no mutex needed).
 public:
-
+    static std::string msDepthImagesFolder;
     static long unsigned int nNextId;
     long unsigned int mnId;
     const long unsigned int mnFrameId;
@@ -163,10 +175,10 @@ public:
     const double mTimeStamp;
 
     // Grid (to speed up feature matching)
-    const int mnGridCols;
-    const int mnGridRows;
-    const float mfGridElementWidthInv;
-    const float mfGridElementHeightInv;
+    static int mnGridCols;
+    static int mnGridRows;
+    static float mfGridElementWidthInv;
+    static float mfGridElementHeightInv;
 
     // Variables used by the tracking
     long unsigned int mnTrackReferenceForFrame;
@@ -190,7 +202,7 @@ public:
     long unsigned int mnBAGlobalForKF;
 
     // Calibration parameters
-    const float fx, fy, cx, cy, invfx, invfy, mbf, mb, mThDepth;
+    static float fx, fy, cx, cy, invfx, invfy, mbf, mb, mThDepth;
 
     // Number of KeyPoints
     const int N;
@@ -210,25 +222,27 @@ public:
     cv::Mat mTcp;
 
     // Scale
-    const int mnScaleLevels;
-    const float mfScaleFactor;
-    const float mfLogScaleFactor;
-    const std::vector<float> mvScaleFactors;
-    const std::vector<float> mvLevelSigma2;
-    const std::vector<float> mvInvLevelSigma2;
+    static int mnScaleLevels;
+    static float mfScaleFactor;
+    static float mfLogScaleFactor;
+    static std::vector<float> mvScaleFactors;
+    static std::vector<float> mvLevelSigma2;
+    static std::vector<float> mvInvLevelSigma2;
 
     // Image bounds and calibration
-    const int mnMinX;
-    const int mnMinY;
-    const int mnMaxX;
-    const int mnMaxY;
-    const cv::Mat mK;
+    static int mnMinX;
+    static int mnMinY;
+    static int mnMaxX;
+    static int mnMaxY;
+    static cv::Mat mK;
 
     std::string mDepthImageName;
 
 
     // The following variables need to be accessed trough a mutex to be thread safe.
 protected:
+    template <typename Archive>
+    friend void ::boost::serialization::serialize(Archive &ar, KeyFrame &keyframe, const unsigned int file_version);
 
     // SE3 Pose and camera center
     cv::Mat Tcw;
@@ -242,7 +256,7 @@ protected:
 
     // BoW
     std::shared_ptr<KeyFrameDatabase> mpKeyFrameDB;
-    std::shared_ptr<ORBVocabulary> mpORBvocabulary;
+    static std::shared_ptr<ORBVocabulary> mpORBvocabulary;
 
     // Grid over the image to speed up feature matching
     std::vector<std::vector<std::vector<size_t> > > mGrid;
@@ -262,13 +276,15 @@ protected:
     bool mbToBeErased;
     bool mbBad;
 
-    float mHalfBaseline; // Only for visualization
+    static float mHalfBaseline; // Only for visualization
 
     std::weak_ptr<Map> mpMap;
 
     std::mutex mMutexPose;
     std::mutex mMutexConnections;
     std::mutex mMutexFeatures;
+
+
 };
 
 } //namespace ORB_SLAM

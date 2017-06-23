@@ -1472,8 +1472,12 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, std::shared_ptr<KeyFrame
                         int bin = round(rot * factor);
                         if (bin == HISTO_LENGTH)
                             bin = 0;
-                        assert(bin >= 0 && bin < HISTO_LENGTH);
-                        rotHist[bin].push_back(bestIdx2);
+//                        assert(bin >= 0 && bin < HISTO_LENGTH);
+                        if (bin >= 0 && bin < HISTO_LENGTH)
+                        {
+                            rotHist[bin].push_back(bestIdx2);
+                        }
+
                     }
                 }
 

@@ -21,13 +21,13 @@
 #ifndef MAPPOINT_H
 #define MAPPOINT_H
 
-#include"KeyFrame.h"
-#include"Frame.h"
-#include"Map.h"
+#include "KeyFrame.h"
+#include "Frame.h"
+#include "Map.h"
 #include <memory>
-#include<opencv2/core/core.hpp>
-#include<mutex>
-
+#include <opencv2/core/core.hpp>
+#include <mutex>
+#include "Serialization.h"
 namespace ORB_SLAM2
 {
 
@@ -40,6 +40,8 @@ class Frame;
 class MapPoint: public std::enable_shared_from_this<MapPoint>
 {
 public:
+    MapPoint();
+
     MapPoint(const cv::Mat &Pos, std::shared_ptr<KeyFrame> pRefKF, std::shared_ptr<Map> pMap);
 
     MapPoint(const cv::Mat &Pos, std::shared_ptr<Map> pMap, Frame *pFrame, const int &idxF);
@@ -97,6 +99,8 @@ public:
 
     int PredictScale(const float &currentDist, Frame *pF);
 
+    void SetMap(std::shared_ptr<Map> map);
+
 public:
     long unsigned int mnId;
     static long unsigned int nNextId;
@@ -128,6 +132,8 @@ public:
     static std::mutex mGlobalMutex;
 
 protected:
+    template <typename Archive>
+    friend void ::boost::serialization::serialize(Archive &ar, MapPoint &mappoint, const unsigned int file_version);
 
     // Position in absolute coordinates
     cv::Mat mWorldPos;

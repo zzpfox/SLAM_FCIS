@@ -30,21 +30,39 @@ namespace ORB_SLAM2
 
 long unsigned int KeyFrame::nNextId = 0;
 
+std::string KeyFrame::msDepthImagesFolder = "./DepthImages";
+
+cv::Mat KeyFrame::mK;
+
+float KeyFrame::cx, KeyFrame::cy, KeyFrame::fx, KeyFrame::fy, KeyFrame::invfx, KeyFrame::invfy;
+
+float KeyFrame::mbf, KeyFrame::mb, KeyFrame::mThDepth, KeyFrame::mHalfBaseline;
+
+float KeyFrame::mfGridElementWidthInv, KeyFrame::mfGridElementHeightInv;
+
+int KeyFrame::mnMinX, KeyFrame::mnMinY, KeyFrame::mnMaxX, KeyFrame::mnMaxY;
+
+int KeyFrame::mnGridCols, KeyFrame::mnGridRows;
+
+std::shared_ptr<ORBVocabulary> KeyFrame::mpORBvocabulary;
+
+int KeyFrame::mnScaleLevels;
+float KeyFrame::mfScaleFactor;
+float KeyFrame::mfLogScaleFactor;
+vector<float> KeyFrame::mvScaleFactors;
+vector<float> KeyFrame::mvLevelSigma2;
+vector<float> KeyFrame::mvInvLevelSigma2;
+
 KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrameDatabase> pKFDB)
     :
-    mnFrameId(F.mnId), mTimeStamp(F.mTimeStamp), mnGridCols(FRAME_GRID_COLS), mnGridRows(FRAME_GRID_ROWS),
-    mfGridElementWidthInv(F.mfGridElementWidthInv), mfGridElementHeightInv(F.mfGridElementHeightInv),
+    mnFrameId(F.mnId), mTimeStamp(F.mTimeStamp),
     mnTrackReferenceForFrame(0), mnFuseTargetForKF(0), mnBALocalForKF(0), mnBAFixedForKF(0),
     mnLoopQuery(0), mnLoopWords(0), mnRelocQuery(0), mnRelocWords(0), mnBAGlobalForKF(0),
-    fx(F.fx), fy(F.fy), cx(F.cx), cy(F.cy), invfx(F.invfx), invfy(F.invfy),
-    mbf(F.mbf), mb(F.mb), mThDepth(F.mThDepth), N(F.N), mvKeys(F.mvKeys), mvKeysUn(F.mvKeysUn),
+    N(F.N), mvKeys(F.mvKeys), mvKeysUn(F.mvKeysUn),
     mvuRight(F.mvuRight), mvDepth(F.mvDepth), mDescriptors(F.mDescriptors.clone()),
-    mBowVec(F.mBowVec), mFeatVec(F.mFeatVec), mnScaleLevels(F.mnScaleLevels), mfScaleFactor(F.mfScaleFactor),
-    mfLogScaleFactor(F.mfLogScaleFactor), mvScaleFactors(F.mvScaleFactors), mvLevelSigma2(F.mvLevelSigma2),
-    mvInvLevelSigma2(F.mvInvLevelSigma2), mnMinX(F.mnMinX), mnMinY(F.mnMinY), mnMaxX(F.mnMaxX),
-    mnMaxY(F.mnMaxY), mK(F.mK), mpKeyFrameDB(pKFDB),
-    mpORBvocabulary(F.mpORBvocabulary), mbFirstConnection(true), mbNotErase(false),
-    mbToBeErased(false), mbBad(false), mHalfBaseline(F.mb / 2), mpMap(pMap)
+    mBowVec(F.mBowVec), mFeatVec(F.mFeatVec), mpKeyFrameDB(pKFDB),
+    mbFirstConnection(true), mbNotErase(false),
+    mbToBeErased(false), mbBad(false), mpMap(pMap)
 {
     mnId = nNextId++;
     mGrid.resize(mnGridCols);
@@ -70,10 +88,19 @@ KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame
     }
     F.mImDepth.convertTo(imDepth, CV_16U, 1.0 / mpMap.lock()->mDepthMapFactor);
     std::stringstream ss;
-    ss << "./DepthImages/KeyFrame-" << std::setw(8) << std::setfill('0') << mnId << ".png";
+    ss << msDepthImagesFolder << "/KeyFrame-" << std::setw(8) << std::setfill('0') << mnId << ".png";
     mDepthImageName = ss.str();
     cv::imwrite(mDepthImageName.c_str(), imDepth);
 
+}
+
+KeyFrame::KeyFrame():
+    mnFrameId(0), mTimeStamp(0.0),
+    mnTrackReferenceForFrame(0), mnFuseTargetForKF(0), mnBALocalForKF(0), mnBAFixedForKF(0),
+    mnLoopQuery(0), mnLoopWords(0), mnRelocQuery(0), mnRelocWords(0), mnBAGlobalForKF(0),
+    N(0), mbFirstConnection(false), mbNotErase(true),
+    mbToBeErased(false), mbBad(false)
+{
 }
 
 void KeyFrame::ComputeBoW()
@@ -702,4 +729,67 @@ void KeyFrame::DeleteDepthImage()
 //    else
 //        std::cout << "File successfully deleted: " << mDepthImageName << std::endl;
 }
+
+void KeyFrame::SetVocabulary(std::shared_ptr<ORBVocabulary> pVocabulary)
+{
+    mpORBvocabulary = pVocabulary;
+}
+
+void KeyFrame::InitializeStaticVariables(std::string depthImageFolder)
+{
+    msDepthImagesFolder = depthImageFolder;
+    mpORBvocabulary = Frame::mpORBvocabulary;
+    mK = Frame::mK;
+    mbf = Frame::mbf;
+    mThDepth = Frame::mThDepth;
+
+    mnGridCols = FRAME_GRID_COLS;
+    mnGridRows = FRAME_GRID_ROWS;
+
+    // Scale Level Info
+    mnScaleLevels = Frame::mnScaleLevels;
+    mfScaleFactor = Frame::mfScaleFactor;
+    mfLogScaleFactor = Frame::mfLogScaleFactor;
+    mvScaleFactors = Frame::mvScaleFactors;
+    mvLevelSigma2 = Frame::mvLevelSigma2;
+    mvInvLevelSigma2 = Frame::mvInvLevelSigma2;
+
+    mnMinX = Frame::mnMinX;
+    mnMinY = Frame::mnMinY;
+    mnMaxX = Frame::mnMaxX;
+    mnMaxY = Frame::mnMaxY;
+
+    mfGridElementWidthInv = Frame::mfGridElementWidthInv;
+    mfGridElementHeightInv = Frame::mfGridElementHeightInv;
+
+    fx = Frame::fx;
+    fy = Frame::fy;
+    cx = Frame::cx;
+    cy = Frame::cy;
+    invfx = Frame::invfx;
+    invfy = Frame::invfy;
+
+    mb = Frame::mb;
+    mHalfBaseline = mb / 2.0;
+}
+
+
+void KeyFrame::SetMap(std::shared_ptr<Map> map)
+{
+    mpMap = map;
+}
+
+void KeyFrame::SetKeyFrameDatabase(std::shared_ptr<KeyFrameDatabase> pKeyFrameDB)
+{
+    mpKeyFrameDB = pKeyFrameDB;
+}
+
+void KeyFrame::RestoreKeyFrame(std::shared_ptr<Map> map, std::shared_ptr<KeyFrameDatabase> pKeyFrameDB)
+{
+    SetMap(map);
+    SetKeyFrameDatabase(pKeyFrameDB);
+    ComputeBoW();
+    pKeyFrameDB->add(shared_from_this());
+}
+
 } //namespace ORB_SLAM

@@ -23,9 +23,12 @@
 #include "System.h"
 #include "Converter.h"
 #include <thread>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
 #include <pangolin/pangolin.h>
 #include <iomanip>
-
+#include "Serialization.h"
+#include <boost/filesystem.hpp>
 bool has_suffix(const std::string &str, const std::string &suffix)
 {
     std::size_t index = str.find(suffix, str.size() - suffix.size());
@@ -36,11 +39,18 @@ namespace ORB_SLAM2
 {
 
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer)
+               const bool bUseViewer, const bool bReuseMap)
     : mSensor(sensor), mbReset(false),
       mbActivateLocalizationMode(false),
-      mbDeactivateLocalizationMode(false)
+      mbDeactivateLocalizationMode(false),
+      msDataFolder("./Data"),
+      msMapFileName("SLAM_Map.bin"), mbLoadMapSuccess(false)
 {
+    boost::filesystem::path dataDir{msDataFolder};
+    boost::filesystem::create_directories(dataDir);
+    boost::filesystem::path mapFile(msMapFileName);
+    boost::filesystem::path mapFileFullPath = dataDir / mapFile;
+    msMapFileName = mapFileFullPath.string();
     // Output welcome message
     cout << endl <<
          "ORB-SLAM2 Copyright (C) 2014-2016 Raul Mur-Artal, University of Zaragoza." << endl <<
@@ -86,7 +96,26 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpKeyFrameDatabase = std::make_shared<KeyFrameDatabase> (*mpVocabulary);
 
     //Create the Map
-    mpMap = std::make_shared<Map> (fsSettings);
+    if (bReuseMap)
+    {
+        std::cout << "\x1B[32m" << "Reusing Previous Map ... " << "\x1B[0m" << std::endl;
+        LoadMap();
+        if (!mbLoadMapSuccess)
+        {
+            mpMap = std::make_shared<Map> (fsSettings, msDataFolder);
+        }
+        else
+        {
+
+            mpMap->msDataFolder = msDataFolder;
+            ActivateLocalizationMode();
+        }
+    }
+    else
+    {
+        mpMap = std::make_shared<Map> (fsSettings, msDataFolder);
+    }
+
 
     //Create Drawers. These are used by the Viewer
     mpFrameDrawer = std::make_shared<FrameDrawer> (mpMap);
@@ -95,7 +124,11 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //Initialize the Tracking thread
     //(it will live in the main thread of execution, the one that called this constructor)
     mpTracker = std::make_shared<Tracking> (this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                                            mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+                                            mpMap, mpKeyFrameDatabase, strSettingsFile,
+                                            mSensor, msDataFolder, bReuseMap);
+
+
+
 
     //Initialize the Local Mapping thread and launch
     mpLocalMapper = std::make_shared<LocalMapping> (mpMap, mSensor == MONOCULAR);
@@ -111,7 +144,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     //Initialize the Viewer thread and launch
     if (bUseViewer) {
-        mpViewer = std::make_shared<Viewer> (this, mpFrameDrawer, mpMapDrawer, mpTracker, strSettingsFile);
+        mpViewer = std::make_shared<Viewer> (this, mpFrameDrawer, mpMapDrawer, mpTracker, strSettingsFile, bReuseMap);
         mptViewer.reset(new thread(&Viewer::Run, mpViewer));
         mpTracker->SetViewer(mpViewer);
     }
@@ -131,6 +164,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     if (bUseViewer){
         mptViewer->detach();
     }
+
 }
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
@@ -346,6 +380,7 @@ void System::Shutdown()
 
     if (mpViewer)
         pangolin::BindToContext("ORB-SLAM2: Map Viewer");
+
 }
 
 void System::SaveTrajectoryTUM(const string &filename)
@@ -521,6 +556,126 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackedKeyPointsUn;
+}
+
+void System::SaveMap()
+{
+    std::string save;
+    while(true)
+    {
+        std::cout << "\x1B[33m" << "Do you wanna save this new map? " << std::endl
+                  << "'y' or 'yes': to save" << std::endl
+                  << "'n' or 'no': not to save"<< "\x1B[0m" << std::endl;
+
+
+        std::cin >> save;
+        std::cout << "Your input is: " << save << std::endl;
+        std::cin.clear();
+        if (std::cin.fail())
+        {
+            std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+            continue;
+        }
+        if (save == "y" || save == "yes")
+        {
+            std::cout << "\x1B[33m" << "Will save the map. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+            std::cin >> save;
+            std::cin.clear();
+            if (std::cin.fail())
+            {
+                std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+                continue;
+            }
+            std::cout << "Your input is: " << save << std::endl;
+            if (save == "y" || save == "yes")
+            {
+                std::cout << "Saving the map ..." << std::endl;
+
+                std::ofstream os(msMapFileName);
+                {
+                    boost::archive::binary_oarchive oa(os, boost::archive::no_header);
+                    oa << mpMap;
+                }
+
+                std::cout << "Saving map done ... " << std::endl;
+                break;
+            }
+        }
+        else if (save == "n" || save == "no")
+        {
+            std::cout << "\x1B[33m" << "Will not save the map. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+            std::cin >> save;
+            std::cin.clear();
+            if (std::cin.fail())
+            {
+                std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+                continue;
+            }
+            std::cout << "Your input is: " << save << std::endl;
+            if (save == "y" || save == "yes")
+            {
+                std::cout << "Map is not saved, exiting ..." << std::endl;
+                break;
+            }
+        }
+        else
+        {
+            std::cout << "Unexpected input word, please type one of the following words:" << std::endl
+                      << "\x1B[34m" << "   'y', 'yes', 'n', 'no'   " << "\x1B[0m" << std::endl;
+        }
+    }
+
+}
+
+void System::LoadMap()
+{
+    {
+        std::ifstream is(msMapFileName);
+        if (is)
+        {
+            boost::archive::binary_iarchive ia(is, boost::archive::no_header);
+            ia >> mpMap;
+            mbLoadMapSuccess = true;
+        }
+        else
+        {
+            std::cout << "\x1B[31m" << "WARNING: Map does not exist, "
+                "starting from scratch ..." << "\x1B[0m" << std::endl;
+            mbLoadMapSuccess = false;
+        }
+
+    }
+    if (mbLoadMapSuccess)
+    {
+        KeyFrame::SetVocabulary(mpVocabulary);
+        std::vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
+        long unsigned int maxKeyFrameId = 0;
+        for (std::vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin();
+             it != vpKFs.end(); ++it)
+        {
+            if ((*it)->mnId > maxKeyFrameId)
+            {
+                maxKeyFrameId = (*it)->mnId;
+            }
+            (*it)->RestoreKeyFrame(mpMap, mpKeyFrameDatabase);
+        }
+        KeyFrame::nNextId = maxKeyFrameId + 1;
+
+        long unsigned int maxMapPointId = 0;
+        std::vector<std::shared_ptr<MapPoint> > vpMPs = mpMap->GetAllMapPoints();
+        for (std::vector<std::shared_ptr<MapPoint> >::iterator it=vpMPs.begin();
+             it != vpMPs.end(); ++it)
+        {
+            if ((*it)->mnId > maxMapPointId)
+            {
+                maxMapPointId = (*it)->mnId;
+            }
+            (*it)->SetMap(mpMap);
+        }
+        MapPoint::nNextId = maxMapPointId + 1;
+
+    }
+
 }
 
 } //namespace ORB_SLAM

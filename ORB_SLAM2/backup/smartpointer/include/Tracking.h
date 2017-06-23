@@ -68,7 +68,8 @@ class Tracking: public std::enable_shared_from_this<Tracking>
 public:
     Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::shared_ptr<FrameDrawer> pFrameDrawer,
              std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Map> pMap,
-             std::shared_ptr<KeyFrameDatabase> pKFDB, const string &strSettingPath, const int sensor);
+             std::shared_ptr<KeyFrameDatabase> pKFDB, const string &strSettingPath,
+             const int sensor, std::string dataDir, const bool bReuseMap=false);
 
     // Preprocess the input and call Track(). Extract features and performs stereo matching.
     cv::Mat GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRectRight, const double &timestamp);
@@ -112,9 +113,13 @@ public:
     eTrackingState mState;
     eTrackingState mLastProcessedState;
 
+    bool mbReuseMap;
+    bool mbReuseMapLocalizationDone;
+
     // Input sensor
     int mSensor;
-
+    std::string msDataFolder;
+    std::string msDepthImagesFolder;
     // Current Frame
     Frame mCurrentFrame;
     cv::Mat mImGray;

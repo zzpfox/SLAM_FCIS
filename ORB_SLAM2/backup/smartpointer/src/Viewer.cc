@@ -28,10 +28,11 @@ namespace ORB_SLAM2
 
 Viewer::Viewer(System *pSystem, std::shared_ptr<FrameDrawer> pFrameDrawer,
                std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Tracking> pTracking,
-               const string &strSettingPath)
+               const string &strSettingPath, const bool bReuseMap)
     :
     mpSystem(pSystem), mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpTracker(pTracking),
-    mbFinishRequested(false), mbFinished(true), mbStopped(true), mbStopRequested(false)
+    mbFinishRequested(false), mbFinished(true), mbStopped(true),
+    mbStopRequested(false), mbReuseMap(bReuseMap)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
 
@@ -72,11 +73,12 @@ void Viewer::Run()
     pangolin::Var<bool> menuShowPoints("menu.Show Points", true, true);
     pangolin::Var<bool> menuShowKeyFrames("menu.Show KeyFrames", true, true);
     pangolin::Var<bool> menuShowGraph("menu.Show Graph", true, true);
-    pangolin::Var<bool> menuLocalizationMode("menu.Localization Mode", false, true);
+    pangolin::Var<bool> menuLocalizationMode("menu.Localization Mode", mbReuseMap, true);
     pangolin::Var<bool> menuShowDenseMap("menu.Show DenseMap", false, true);
     pangolin::Var<bool> menuShowSegObjects("menu.Show SegObjects", false, true);
+    pangolin::Var<bool> menuSaveMap("menu.Save Map", false, true);
     pangolin::Var<bool> menuReset("menu.Reset", false, false);
-    bool bShowObject = true;
+
     // Define Camera Render Object (for view / scene browsing)
     pangolin::OpenGlRenderState s_cam(
         pangolin::ProjectionMatrix(1024, 768, mViewpointF, mViewpointF, 512, 389, 0.1, 1000),
@@ -95,6 +97,8 @@ void Viewer::Run()
 
     bool bFollow = true;
     bool bLocalizationMode = false;
+    bool bShowObject = true;
+    bool bSaveMap = true;
 
     while (1) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -145,6 +149,16 @@ void Viewer::Run()
         }
         else {
             bShowObject = true;
+        }
+
+        if (menuSaveMap) {
+            if (bSaveMap) {
+                mpSystem->SaveMap();
+                bSaveMap = false;
+            }
+        }
+        else {
+            bSaveMap = true;
         }
 
         pangolin::FinishFrame();

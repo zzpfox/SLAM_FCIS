@@ -46,11 +46,12 @@ namespace ORB_SLAM2
 
 Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::shared_ptr<FrameDrawer> pFrameDrawer,
                    std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Map> pMap,
-                   std::shared_ptr<KeyFrameDatabase> pKFDB, const string &strSettingPath, const int sensor)
-    :
+                   std::shared_ptr<KeyFrameDatabase> pKFDB, const string &strSettingPath,
+                   const int sensor, std::string dataDir, const bool bReuseMap):
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpSystem(pSys), mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer),
-    mpMap(pMap), mnLastRelocFrameId(0), mbSegStop(false)
+    mpMap(pMap), mnLastRelocFrameId(0), mbSegStop(false),
+    mbReuseMap(bReuseMap), msDataFolder(dataDir), msDepthImagesFolder("DepthImages")
 {
     // Load camera parameters from settings file
 
@@ -124,7 +125,7 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
         mpORBextractorRight = std::make_shared<ORBextractor> (nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
 
     if (sensor == System::MONOCULAR)
-        mpIniORBextractor = std::make_shared<ORBextractor> (nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
+        mpIniORBextractor = std::make_shared<ORBextractor> (2 * nFeatures, fScaleFactor, nLevels, fIniThFAST, fMinThFAST);
 
     cout << endl << "ORB Extractor Parameters: " << endl;
     cout << "- Number of Features: " << nFeatures << endl;
@@ -146,9 +147,88 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
             mDepthMapFactor = 1.0f / mDepthMapFactor;
     }
     StartSegmentationThread();
-    boost::filesystem::path path{"./DepthImages"};
-    boost::filesystem::remove_all(path);
-    boost::filesystem::create_directories(path);
+
+    boost::filesystem::path depthImageFolder(msDepthImagesFolder);
+    boost::filesystem::path depthImageFolderFullPath = msDataFolder / depthImageFolder;
+    if (!mbReuseMap)
+    {
+        std::string deleteDepth;
+        while(true)
+        {
+            std::cout << "\x1B[33m" << "Do you wanna delete the previously stored DepthImages? " << std::endl
+                      << "'y' or 'yes': to save" << std::endl
+                      << "'n' or 'no': not to save"<< "\x1B[0m" << std::endl;
+
+            std::cin >> deleteDepth;
+            std::cout << "Your input is: " << deleteDepth << std::endl;
+            std::cin.clear();
+            if (std::cin.fail())
+            {
+                std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+                continue;
+            }
+            if (deleteDepth == "y" || deleteDepth == "yes")
+            {
+                std::cout << "\x1B[33m" << "Will delete the DepthImages. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+                std::cin >> deleteDepth;
+                std::cin.clear();
+                if (std::cin.fail())
+                {
+                    std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+                    continue;
+                }
+                std::cout << "Your input is: " << deleteDepth << std::endl;
+                if (deleteDepth == "y" || deleteDepth == "yes")
+                {
+                    std::cout << "Deleting and recreating the DepthImage folder ..." << std::endl;
+
+                    boost::filesystem::remove_all(depthImageFolderFullPath);
+                    boost::filesystem::create_directories(depthImageFolderFullPath);
+
+                    std::cout << "Deleting and recreating the DepthImage folder done ... " << std::endl;
+                    break;
+                }
+            }
+            else if (deleteDepth == "n" || deleteDepth == "no")
+            {
+                std::cout << "\x1B[33m" << "WARNING: Will not delete the DepthImages. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+                std::cin >> deleteDepth;
+                std::cin.clear();
+                if (std::cin.fail())
+                {
+                    std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
+                    continue;
+                }
+                std::cout << "Your input is: " << deleteDepth << std::endl;
+                if (deleteDepth == "y" || deleteDepth == "yes")
+                {
+                    std::cout << "DepthImages folder is not deleted ..." << std::endl;
+                    break;
+                }
+            }
+            else
+            {
+                std::cout << "Unexpected input word, please type one of the following words:" << std::endl
+                          << "\x1B[34m" << "   'y', 'yes', 'n', 'no'   " << "\x1B[0m" << std::endl;
+            }
+        }
+
+    }
+
+
+    float rows = fSettings["Camera.height"];
+    float cols = fSettings["Camera.width"];
+
+    Frame::InitializeStaticVariables(mpORBextractorLeft,
+                                     mpORBVocabulary,
+                                     mK,
+                                     mDistCoef,
+                                     mbf,
+                                     mThDepth,
+                                     rows,
+                                     cols);
+    KeyFrame::InitializeStaticVariables(depthImageFolderFullPath.string());
+    MapDrawer::msDepthImagesPath = depthImageFolderFullPath.string();
 }
 
 void Tracking::SetLocalMapper(std::shared_ptr<LocalMapping> pLocalMapper)
@@ -192,9 +272,7 @@ cv::Mat Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat &imRe
         }
     }
 
-    mCurrentFrame = Frame(mImGray, imGrayRight, timestamp, mpORBextractorLeft, mpORBextractorRight, mpORBVocabulary,
-                          mK, mDistCoef, mbf, mThDepth);
-
+    mCurrentFrame = Frame(mImGray, imGrayRight, timestamp, mpORBextractorLeft, mpORBextractorRight);
     Track();
 
     return mCurrentFrame.mTcw.clone();
@@ -221,9 +299,7 @@ cv::Mat Tracking::GrabImageRGBD(const cv::Mat &imRGB, const cv::Mat &imD, const 
     if ((fabs(mDepthMapFactor - 1.0f) > 1e-5) || imDepth.type() != CV_32F)
         imDepth.convertTo(imDepth, CV_32F, mDepthMapFactor);
 
-    mCurrentFrame = Frame(mImGray, imRGB, imDepth, timestamp, mpORBextractorLeft, mpORBVocabulary, mK, mDistCoef,
-                          mbf, mThDepth);
-
+    mCurrentFrame = Frame(mImGray, imRGB, imDepth, timestamp, mpORBextractorLeft);
     Track();
 
     return mCurrentFrame.mTcw.clone();
@@ -247,10 +323,9 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     }
 
     if (mState == NOT_INITIALIZED || mState == NO_IMAGES_YET)
-        mCurrentFrame = Frame(mImGray, timestamp, mpIniORBextractor, mpORBVocabulary, mK, mDistCoef, mbf, mThDepth);
+        mCurrentFrame = Frame(mImGray, timestamp, mpIniORBextractor);
     else
-        mCurrentFrame = Frame(mImGray, timestamp, mpORBextractorLeft, mpORBVocabulary, mK, mDistCoef, mbf,
-                              mThDepth);
+        mCurrentFrame = Frame(mImGray, timestamp, mpORBextractorLeft);
 
     Track();
 
@@ -268,7 +343,7 @@ void Tracking::Track()
     // Get Map Mutex -> Map cannot be changed
     unique_lock<mutex> lock(mpMap->mMutexMapUpdate);
 
-    if (mState == NOT_INITIALIZED) {
+    if (mState == NOT_INITIALIZED && !mbReuseMap) {
         if (mSensor == System::STEREO || mSensor == System::RGBD)
             StereoInitialization();
         else
@@ -307,7 +382,6 @@ void Tracking::Track()
         }
         else {
             // Localization Mode: Local Mapping is deactivated
-
             if (mState == LOST) {
                 bOK = Relocalization();
             }
@@ -386,7 +460,6 @@ void Tracking::Track()
 
         // Update drawer
         mpFrameDrawer->Update(shared_from_this());
-
         // If tracking were good, check if we insert a keyframe
         if (bOK) {
             // Update motion model
@@ -1077,7 +1150,7 @@ void Tracking::CreateNewKeyFrame()
         int count = 0;
         while (mImagesQueue.size() >= mcQueueSize) {
             mImagesQueue.pop();
-            std::cout << "Poping images " << ++count << std::endl;
+            std::cout << "[Socket] Image Queue is too large, poping images " << ++count << std::endl;
         }
         mImagesQueue.push(images);
     }
@@ -1087,7 +1160,7 @@ void Tracking::PerformSegmentation()
 {
     while (!mbSegStop) {
         std::unique_lock<std::mutex> lck(mMutexImagesQueue);
-        if (!mImagesQueue.empty()) {
+        if (!mImagesQueue.empty() && mState == OK) {
             ImagePair images;
             images = mImagesQueue.front();
             mImagesQueue.pop();
@@ -1115,9 +1188,9 @@ void Tracking::SaveSegResultToMap(const Client::ClsPosPairs &clsPosPairs, long u
         ObjectPos objpos;
         int posesSize = poses.size();
         for (int j = 0; j < posesSize; j++) {
-            std::vector<double> pos = poses[j];
-            Eigen::Vector3d Pc(pos.data());
-            if ((Pc.array() != 0.0).any()) {
+            std::vector<double> Pc = poses[j];
+            bool zeros = std::all_of(Pc.begin(), Pc.end(), [](double i){return i==0;});
+            if (!zeros) {
                 objpos.addInstance(Pc);
             }
         }
@@ -1582,8 +1655,19 @@ void Tracking::ChangeCalibration(const string &strSettingPath)
     DistCoef.copyTo(mDistCoef);
 
     mbf = fSettings["Camera.bf"];
-
-    Frame::mbInitialComputations = true;
+    float rows = fSettings["Camera.height"];
+    float cols = fSettings["Camera.width"];
+    Frame::InitializeStaticVariables(mpORBextractorLeft,
+                                     mpORBVocabulary,
+                                     mK,
+                                     mDistCoef,
+                                     mbf,
+                                     mThDepth,
+                                     rows,
+                                     cols);
+    boost::filesystem::path depthImageFolder(msDepthImagesFolder);
+    boost::filesystem::path depthImageFolderFullPath = msDataFolder / depthImageFolder;
+    KeyFrame::InitializeStaticVariables(depthImageFolderFullPath.string());
 }
 
 void Tracking::InformOnlyTracking(const bool &flag)
