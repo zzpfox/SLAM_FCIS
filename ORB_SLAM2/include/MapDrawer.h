@@ -33,6 +33,19 @@
 namespace ORB_SLAM2
 {
 
+struct RRTNode
+{
+    RRTNode(const std::vector<int> &point): mPoint(point){};
+    RRTNode(const std::vector<int> &point, std::shared_ptr<RRTNode> parent):
+        mPoint(point), mParent(parent){};
+    void addParent(std::shared_ptr<RRTNode> parent)
+    {
+        mParent = parent;
+    }
+    std::vector<int> mPoint;
+    std::shared_ptr<RRTNode> mParent;
+};
+
 class MapDrawer
 {
 public:
@@ -47,7 +60,7 @@ public:
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             int begin, int step);
 
-    void PathPlanning();
+    void PathPlanning(std::vector<float> &start, std::vector<float> &target);
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 
@@ -58,6 +71,16 @@ public:
     void DrawPointCloud();
 
     void DrawMapPoints();
+
+    bool RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
+                       std::vector<std::vector<int> > &mObstacles,
+                       int nMiddleX, int nMiddleY, int ncStepSize);
+
+    bool RRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
+                           std::vector<std::shared_ptr<RRTNode> > &treePop,
+                           std::vector<std::vector<int> > &mObstacles,
+                           std::vector<std::shared_ptr<RRTNode> > &vSolution,
+                           int ncStepSize);
 
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
 

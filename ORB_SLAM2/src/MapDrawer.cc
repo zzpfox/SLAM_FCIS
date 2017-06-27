@@ -33,6 +33,9 @@
 #include <pcl/filters/random_sample.h>
 #include <sstream>
 #include <iomanip>
+#include <limits>
+#include <stdlib.h>
+#include <time.h>
 
 namespace ORB_SLAM2
 {
@@ -93,442 +96,352 @@ void MapDrawer::DrawPointCloud()
         std::cout << "Total Number of Points: " << mCloud->size() << std::endl;
         std::cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
     }
-
-    glPointSize(mPointSize);
-    glBegin(GL_POINTS);
-    glColor3f(1.0, 0.0, 1.0);
-    for (auto p : mCloud->points) {
-        glVertex3f(p.x, p.y, p.z);
-    }
-
-    glEnd();
-//    PathPlanning();
+//    glPointSize(mPointSize);
+//    glBegin(GL_POINTS);
+//    glColor3f(1.0, 0.0, 1.0);
+//    for (auto p : mCloud->points) {
+//        glVertex3f(p.x, p.y, p.z);
+//    }
+//
+//    glEnd();
+    std::vector<float>  start = {0, 0};
+    std::vector<float> target = {1.5, -5.5};
+    PathPlanning(start, target);
 }
 
-void MapDrawer::PathPlanning()
+bool MapDrawer::RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
+                              std::vector<std::vector<int> > &mObstacles,
+                              int nMiddleX, int nMiddleY, int ncStepSize)
 {
-    const int SIZEMAX = 500;
-    const float LeafSize = 0.025;
-    const float ObstacleWidth = 9;//these three should choose properly. SIZEMAX*LEAFSIze is the range of the enviroment.
-    //LeafSIze * ObStacleWidth is the width of the obstacles that extend, equal to half of the robot width
+    int nDisMin = std::numeric_limits<int>::max();
+    int nConnect = 1;
+
+    std::shared_ptr<RRTNode> pMin = std::make_shared<RRTNode> (std::vector<int> (2, nDisMin));
+    for (vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
+        std::vector<int> vTmpPoint = (*sit)->mPoint;
+        int nTmpDist = abs(nMiddleX - vTmpPoint[0]) + abs(nMiddleY - vTmpPoint[1]);
+        if (nTmpDist < nDisMin) {
+            nDisMin = nTmpDist;
+            pMin = *sit;
+        }
+    }
+
+    if (nDisMin < 4)
+        return false;//means too close
+
+    int nStepX = pMin->mPoint[0] > nMiddleX ? (-1) : 1;
+    int nStepY = pMin->mPoint[1] > nMiddleY ? (-1) : 1;// different step along different direction
+
+    //use sin,cos to determine direction
+    float fRadius = sqrt(pow(float(pMin->mPoint[0] - nMiddleX), 2.0) + pow(float(pMin->mPoint[1] - nMiddleY), 2.0));
+    int nStepSizeX = int(float(ncStepSize * abs(pMin->mPoint[0] - nMiddleX)) / fRadius) + 1;// sin
+    int nStepSizeY = int(float(ncStepSize * abs(pMin->mPoint[1] - nMiddleY)) / fRadius) + 1;// cos
+
+    for (int i = pMin->mPoint[0]; abs(i - pMin->mPoint[0]) < nStepSizeX; i += nStepX) {
+        int OUT = 0;
+        for (int j = pMin->mPoint[1]; abs(j - pMin->mPoint[1]) < nStepSizeY; j += nStepY) {
+            if (mObstacles[j][i] == 1)//found obstacle
+            {
+                nConnect = 0;// not directly connect
+                OUT = 1;
+                break;
+            }
+        }
+        if (OUT == 1)
+            break;
+    }
+
+    if (nConnect == 1) {// add
+//            nStepX = pMinStart->mPoint[0] > nMiddleX ? (-1) : 1;
+//            nStepY = pMinStart->mPoint[1] > nMiddleY ? (-1) : 1;
+
+        int x = nStepX * nStepSizeX + pMin->mPoint[0];
+        int y = nStepY * nStepSizeY + pMin->mPoint[1];
+        std::vector<int> vTmpPoint = {x, y};
+        std::shared_ptr<RRTNode> tmpNode = std::make_shared<RRTNode> (vTmpPoint);
+        tmpNode->addParent(pMin);
+        tree.push_back(tmpNode);
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+bool MapDrawer::RRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
+                                  std::vector<std::shared_ptr<RRTNode> > &treePop,
+                                  std::vector<std::vector<int> > &mObstacles,
+                                  std::vector<std::shared_ptr<RRTNode> > &vSolution,
+                                  int ncStepSize)
+{
+    //check whether new node near the other tree, first check near target tree
+    bool bConnect = false;
+    for (std::vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
+        int y = (*sit)->mPoint[1];
+        int x = (*sit)->mPoint[0];
+        if (abs(treePop.back()->mPoint[0] - x) + abs(treePop.back()->mPoint[1]  - y) <= 2 * ncStepSize) {
+            int nOut = 0;
+            for (int i = min(treePop.back()->mPoint[0], x); i <= max(treePop.back()->mPoint[0], x); i++) {
+
+                for (int j = min(treePop.back()->mPoint[1], y); j <= max(treePop.back()->mPoint[1], y); j++) {
+                    if (mObstacles[j][i] == 1) {
+                        nOut = 1;
+                        bConnect = false;
+                        break;
+                    }
+                }
+                if (nOut == 1)
+                    break;
+            }
+            if (!nOut)//connect
+            {
+                bConnect = true;//connect to start tree
+                vSolution.clear();
+                vSolution.push_back(treePop.back());
+                while(vSolution.back()->mParent)
+                {
+                    vSolution.push_back(vSolution.back()->mParent);
+                }
+                std::reverse(vSolution.begin(), vSolution.end());
+                vSolution.push_back(*sit);
+                while(vSolution.back()->mParent)
+                {
+                    vSolution.push_back(vSolution.back()->mParent);
+                }
+                break;
+            }
+        }
+    }
+    return bConnect;
+}
+void MapDrawer::PathPlanning(std::vector<float> &start, std::vector<float> &target)
+{
+
+    if (start.size() != 2 || target.size() != 2)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    glPointSize(mPointSize * 5);
+    glBegin(GL_POINTS);
+    glColor3f(1.0, 0.0, 0.0);
+    glVertex3f(start[0], 5, start[1]);
+    glVertex3f(target[0], 5, target[1]);
+    glEnd();
+    std::vector<float> vBounds = {std::numeric_limits<float>::max(),
+                                  std::numeric_limits<float>::min(),
+                                  std::numeric_limits<float>::max(),
+                                  std::numeric_limits<float>::min()};
+    for (auto p: mCloud->points)
+    {
+        if (p.x < vBounds[0])
+        {
+            vBounds[0] = p.x;
+        }
+        if (p.x > vBounds[1])
+        {
+            vBounds[1] = p.x;
+        }
+        if (p.z < vBounds[2])
+        {
+            vBounds[2] = p.z;
+        }
+        if (p.z > vBounds[3])
+        {
+            vBounds[3] = p.z;
+        }
+    }
+    const int nMaxIter = 10000;
+    const float fcLeafSize = 0.025;
+    const int ncSizeX = static_cast<int> ((vBounds[1] - vBounds[0] + 0.2) / fcLeafSize);
+    const int ncSizeY = static_cast<int> ((vBounds[3] - vBounds[2] + 0.2) / fcLeafSize);
+    const float fcObstacleWidth = 9;//these three should choose properly. ncSizeMax*fcLeafSize is the range of the enviroment.
+    //LeafSIze * fcObstacleWidth is the width of the obstacles that extend, equal to half of the robot width
     //37.5cm--->15 is the whole body, 22.5cm-->9 is the test body
+    std::vector<std::vector<int> > mObstacles(ncSizeY, std::vector<int> (ncSizeX, 0));
+    // origin is (ncSizeMax,ncSizeMax), minimal leaf is fcLeafSize,
+    // so the range is [-ncSizeMax * fcLeafSize,ncSizeMax * fcLeafSize]*
+    // [-ncSizeMax * fcLeafSize,ncSizeMax * fcLeafSize]
+    std::vector<int> nStart(2, 0);
+    std::vector<int> nTarget(2, 0);
+    nStart[0] = static_cast<int> ((start[0] - vBounds[0]) / fcLeafSize);
+    nStart[1] = static_cast<int> ((start[1] - vBounds[2]) / fcLeafSize);
+    nTarget[0] = static_cast<int> ((target[0] - vBounds[0]) / fcLeafSize);
+    nTarget[1] = static_cast<int> ((target[1] - vBounds[2]) / fcLeafSize);
+    if (nStart[0] < 0 || nStart[0] >= ncSizeX ||
+        nStart[1] < 0 || nStart[1] >= ncSizeY ||
+        nTarget[0] < 0 || nTarget[0] >= ncSizeX ||
+        nTarget[1] < 0 || nTarget[1] >= ncSizeY)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors out of bounds"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+//    std::transform(start.begin(), start.end(), nStart.begin(),
+//                   [fcLeafSize, ncSizeMax](float d) -> int{return
+//                       (static_cast<int> (d / fcLeafSize) + ncSizeMax);});
+//    std::transform(target.begin(), target.end(), nTarget.begin(),
+//                   [fcLeafSize, ncSizeMax](float d) -> int{return
+//                       (static_cast<int> (d / fcLeafSize) + ncSizeMax);});
 
+    std::vector<std::shared_ptr<RRTNode> > vStartTree;
+    std::vector<std::shared_ptr<RRTNode> > vTargetTree;
 
-    int Obstacles[2 * SIZEMAX][2 * SIZEMAX
-    ];//origin is (400,400), minimal leaf is 0.05m, so the range is [-20m,20m]*[-20m,20m]
-
-    for (int i = 0; i < 2 * SIZEMAX; i++)
-        for (int j = 0; j < 2 * SIZEMAX; j++)
-            Obstacles[i][j] = 0;// init
-
-
-
-    int Start[2] = {500, 500};
-    int Target[2] = {580, 280};
-    vector<int> StartTree;//all the points, tree
-    vector<int> StartFather;//father node, only one , to make a line in the final
-
-    StartTree.push_back(Start[0] * 2 * SIZEMAX + Start[1]);
-    StartFather.push_back(0);
-    int StartTreeCount = 0;
-
-    vector<int> TargetTree;
-    vector<int> TargetFather;
-    TargetTree.push_back(Target[0] * 2 * SIZEMAX + Target[1]);
-    TargetFather.push_back(0);
-    int TargetTreeCount = 0;
-
-    int XMAX = 0, XMIN = 2 * SIZEMAX, YMAX = 0, YMIN = 2 * SIZEMAX;
+    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
+    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
 
     glPointSize(mPointSize);
     glBegin(GL_POINTS);
     glColor3f(0.0, 0.0, 1.0);
-    for (auto p:mCloud->points) {
-
-
-        if (int(p.x / LeafSize) + SIZEMAX > ObstacleWidth
-            && int(p.z / LeafSize) + SIZEMAX > ObstacleWidth)//not at the boundary, draw a circle
+    for (auto p : mCloud->points) {
+        int nTmpX = static_cast<int>((p.x - vBounds[0]) / fcLeafSize);
+        int nTmpY = static_cast<int>((p.z - vBounds[2]) / fcLeafSize);
+        if (nTmpX > fcObstacleWidth && nTmpX < ncSizeX - fcObstacleWidth
+            && nTmpY > fcObstacleWidth && nTmpY < ncSizeY - fcObstacleWidth)//not at the boundary, draw a circle
         {
             int NumOfParts = 60;//divide a circle into NumOfParts parts
             for (int i = 0; i < NumOfParts; i++) {
-                float theta = 2 * 3.14159265 * float(i) / float(NumOfParts);
-                Obstacles[int(p.x / LeafSize) + SIZEMAX + int(ObstacleWidth * cos(theta))][int(p.z / LeafSize) + SIZEMAX
-                    +
-                        int(ObstacleWidth * sin(theta))] = 1;//set obstacle,middle is 400,400
-                glVertex3f(float(int(p.x / LeafSize) + int(ObstacleWidth * cos(theta))) * LeafSize,
+                float theta = 2 * 3.14159265 * i / float(NumOfParts);
+                //set obstacle,middle is [ncSizeMax,ncSizeMax]
+                mObstacles[nTmpY + int(fcObstacleWidth * cos(theta))]
+                [nTmpX + int(fcObstacleWidth * sin(theta))] = 1;
+                glVertex3f(p.x + fcObstacleWidth * fcLeafSize * cos(theta),
                            5,
-                           float(int(p.z / LeafSize) + int(ObstacleWidth * sin(theta))) * LeafSize);
+                           p.z + fcObstacleWidth * fcLeafSize * sin(theta));
             }
         }
         else {
-            Obstacles[int(p.x / LeafSize) + SIZEMAX][int(p.z / LeafSize) + SIZEMAX] = 1;//set obstacle,middle is 400,400
-            glVertex3f(float(int(p.x / LeafSize)) * LeafSize, 5, float(int(p.z / LeafSize)) * LeafSize);
+            //set obstacle,middle is [ncSizeMax,ncSizeMax]
+            mObstacles[nTmpY][nTmpX] = 1;
+            glVertex3f(p.x, 5, p.z);
+        }
+    }
+    glEnd();
+
+    int nCount = 0;
+    int ncStepSize = 6; //pixel
+
+    std::vector<std::shared_ptr<RRTNode> > vSolution;
+    srand (time(NULL));
+    while (nCount < nMaxIter)  //max iteration
+    {
+        nCount++;
+        int nMiddleX = rand() % ncSizeX;
+        int nMiddleY = rand() % ncSizeY;
+
+        int innerMaxIter = 50;
+        for (int iter = 0; iter < innerMaxIter; iter++)
+        {
+            if (mObstacles[nMiddleY][nMiddleX] == 0)
+            {
+                break;
+            }
+            nMiddleX = rand() % ncSizeX;
+            nMiddleY = rand() % ncSizeY;
+            if (iter >= innerMaxIter - 1)
+            {
+                std::cout << "\x1B[31m" << "ERROR: cannot generate a collision-free random point"
+                          << "\x1B[0m" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        if (!RRTTreeExpand(vStartTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
+        {
+            continue;
+        };
+        if (!RRTTreeExpand(vTargetTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
+        {
+            continue;
+        };
+
+        if (!RRTTreesIntersect(vTargetTree, vStartTree, mObstacles, vSolution, ncStepSize))
+        {
+            if (!RRTTreesIntersect(vStartTree, vTargetTree, mObstacles, vSolution, ncStepSize))
+            {
+                continue;
+            }
         }
 
-        if (int(p.x / LeafSize) + SIZEMAX < XMIN)
-            XMIN = int(p.x / LeafSize) + SIZEMAX;
-        else if (int(p.x / LeafSize) + SIZEMAX > XMAX)
-            XMAX = int(p.x / LeafSize) + SIZEMAX;
 
-        if (int(p.z / LeafSize) + SIZEMAX < YMIN)
-            YMIN = int(p.z / LeafSize) + SIZEMAX;
-        else if (int(p.z / LeafSize) + SIZEMAX > YMAX)
-            YMAX = int(p.z / LeafSize) + SIZEMAX;
+        cout << "Path Found!" << endl;
+        //the order in Solution is the path, now smooth
+        int nSpan = 2; //follow rrt
+        while (nSpan < vSolution.size()) {
+            bool bChanged = false;
+            for (int i = 0; i + nSpan < vSolution.size(); i++) {
+                bool bCanErase = true;// true to erase
+                int yy = vSolution[i]->mPoint[1];
+                int xx = vSolution[i]->mPoint[0];
+                int yyy = vSolution[i + nSpan]->mPoint[1];
+                int xxx = vSolution[i + nSpan]->mPoint[0];
 
+                for (int ii = min(xx, xxx); ii <= max(xx, xxx); ii++) {
+                    for (int jj = min(yy, yyy); jj <= max(yy, yyy); jj++) {
+                        if (mObstacles[jj][ii] == 1) {
+                            bCanErase = false;
+                            break;
+                        }
+                    }
+                    if (!bCanErase)
+                        break;
+                }
+
+
+                if (bCanErase) {
+                    for (int x = 1; x < nSpan; x++) {
+                        vSolution.erase(vSolution.begin() + i + 1);
+                    }
+                    bChanged = true;
+                }
+            }
+
+            if (!bChanged) nSpan++;
+        }
+
+
+        glLineWidth(mKeyFrameLineWidth * 4);
+        glColor3f(0.0, 1.0, 0.0);
+        glBegin(GL_LINES);
+        for (std::vector<std::shared_ptr<RRTNode> >::iterator st = vSolution.begin(); (st + 1) != vSolution.end(); st++) //in right order
+        {
+            int yy = (*st)->mPoint[1];
+            int xx = (*st)->mPoint[0];
+            glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
+            int yyy = (*(st + 1))->mPoint[1];
+            int xxx = (*(st + 1))->mPoint[0];
+            glVertex3f(xxx * fcLeafSize + vBounds[0], 5.0, yyy * fcLeafSize + vBounds[2]);
+
+        }
+        glEnd();
+        break;
+    }
+    glPointSize(2);
+    glBegin(GL_POINTS);
+    glColor3f(1.0,0.0,0.5);
+    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vStartTree.begin();st!=vStartTree.end();st++) {
+
+        int yy = (*st)->mPoint[1];
+        int xx = (*st)->mPoint[0];
+        glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
     }
     glEnd();
 
 
-    int count = 0;
-    int DisMin;
-    int XRANGE = XMAX - XMIN;
-    int YRANGE = YMAX - YMIN;
-    int STEPSIZE = 6; //pixel
-
-    vector<int> Solution;
-
-
-    while (count < 10000)  //max iteration
-    {
-        count++;
-        if (XRANGE < 1 || YRANGE < 1) {
-            cout << "Range error!" << endl;
-            break;
-        }
-
-        int MiddleX = XMIN + int(XRANGE * drand48());
-        int MiddleY = YMIN + int(YRANGE * drand48());//generate a middle point
-        while (Obstacles[MiddleX][MiddleY] == 1)// should not be an obstacle
-        {
-            MiddleX = XMIN + int(XRANGE * drand48());
-            MiddleY = YMIN + int(YRANGE * drand48());//generate a middle point
-        }
-
-        //check StartTree
-        DisMin = 2 * 2 * SIZEMAX;
-        int ConnectStart = 1;
-        int StartX = SIZEMAX;
-        int StartY = SIZEMAX;
-        int MinStartX = StartX;
-        int MinStartY = StartY;
-        int MinStartPos = 0;
-        int MinStartCount = 0;
-        for (vector<int>::iterator sit = StartTree.begin(), send = StartTree.end(); sit != send; sit++) {
-
-            StartY = (*sit) % (2 * SIZEMAX);
-            StartX = (*sit - StartY) / (2 * SIZEMAX);
-            if (abs(MiddleX - StartX) + abs(MiddleY - StartY) < DisMin) {
-                DisMin = abs(MiddleX - StartX) + abs(MiddleY - StartY);
-                MinStartX = StartX;
-                MinStartY = StartY;
-                MinStartPos = MinStartCount;
-            }
-            MinStartCount++;
-        }
-
-        if (DisMin < 4)
-            continue;//means too close
-
-        int StepX = MinStartX > MiddleX ? (-1) : 1;
-        int StepY = MinStartY > MiddleY ? (-1) : 1;// different step along different direction
-        int STEPSIZEX, STEPSIZEY;
-
-        //use sin,cos to determine direction
-        float Radius = sqrt(
-            float((MinStartX - MiddleX) * (MinStartX - MiddleX) + (MinStartY - MiddleY) * (MinStartY - MiddleY)));
-        STEPSIZEX = int(float(STEPSIZE * abs(MinStartX - MiddleX)) / Radius) + 1;// sin
-        STEPSIZEY = int(float(STEPSIZE * abs(MinStartY - MiddleY)) / Radius) + 1;// cos
-
-
-
-        for (int i = MinStartX; abs(i - MinStartX) < STEPSIZEX; i += StepX) {
-            int OUT = 0;
-            for (int j = MinStartY; abs(j - MinStartY) < STEPSIZEY; j += StepY) {
-
-                if (Obstacles[i][j] == 1)//found obstacle
-                {
-
-                    ConnectStart = 0;// not directly connect
-
-                    OUT = 1;
-
-                    break;
-                }
-            }
-            if (OUT == 1)
-                break;
-        }
-
-        int StartSaveX = MinStartX, StartSaveY = MinStartY;//if Connect=0, then use Minstart as StartSave
-
-        if (ConnectStart == 1) {// add
-            StepX = MinStartX > MiddleX ? (-1) : 1;
-            StepY = MinStartY > MiddleY ? (-1) : 1;
-
-            StartSaveX = StepX * STEPSIZEX + MinStartX;
-            StartSaveY = StepY * STEPSIZEY + MinStartY;
-            StartTree.push_back(
-                ((StartSaveX)) * 2 * SIZEMAX + (StartSaveY));// add the halfway point
-            StartFather.push_back(MinStartPos);
-
-        }
-
-        //check TargetTree
-        DisMin = 2 * 2 * SIZEMAX;
-        int ConnectTarget = 1;
-        int TargetX = SIZEMAX;
-        int TargetY = SIZEMAX;
-        int MinTargetX = TargetX;
-        int MinTargetY = TargetY;
-        int MinTargetPos = 0;
-        int MinTargetCount = 0;
-        for (vector<int>::iterator sit = TargetTree.begin(), send = TargetTree.end(); sit != send; sit++) {
-            TargetY = (*sit) % (2 * SIZEMAX);
-            TargetX = (*sit - TargetY) / (2 * SIZEMAX);
-            if (abs(MiddleX - TargetX) + abs(MiddleY - TargetY) < DisMin) {
-                DisMin = abs(MiddleX - TargetX) + abs(MiddleY - TargetY);
-                MinTargetX = TargetX;
-                MinTargetY = TargetY;
-                MinTargetPos = MinTargetCount;
-            }
-            MinTargetCount++;
-        }
-
-        if (DisMin < 4)
-            continue;//means too close
-
-        StepX = MinTargetX > MiddleX ? (-1) : 1;
-        StepY = MinTargetY > MiddleY ? (-1) : 1;
-
-        //use sin,cos to determine direction
-        Radius = sqrt(float((MinTargetX - MiddleX) * (MinTargetX - MiddleX) +
-            (MinTargetY - MiddleY) * (MinTargetY - MiddleY)));
-        STEPSIZEX = int(float(STEPSIZE * abs(MinTargetX - MiddleX)) / Radius) + 1;// sin
-        STEPSIZEY = int(float(STEPSIZE * abs(MinTargetY - MiddleY)) / Radius) + 1;// cos
-
-
-        for (int i = MinTargetX; abs(i - MinTargetX) < STEPSIZEX; i += StepX) {
-            int OUT = 0;
-            for (int j = MinTargetY; abs(j - MinTargetY) < STEPSIZEY; j += StepY) {
-                if (Obstacles[i][j] == 1)//found obstacle
-                {
-
-                    ConnectTarget = 0;// not directly connect,as STEPSIZE is small, do not add to tree
-
-                    OUT = 1;
-
-
-                    break;
-                }
-            }
-            if (OUT == 1)
-                break;
-        }
-
-
-        int TargetSaveX = MinTargetX, TargetSaveY = MinTargetY;
-
-        if (ConnectTarget == 1) {// have a long line
-            StepX = MinTargetX > MiddleX ? (-1) : 1;
-            StepY = MinTargetY > MiddleY ? (-1) : 1;
-
-            TargetSaveX = StepX * STEPSIZEX + MinTargetX;
-            TargetSaveY = StepY * STEPSIZEY + MinTargetY;
-            TargetTree.push_back(
-                ((TargetSaveX)) * 2 * SIZEMAX + (TargetSaveY));// add the halfway point
-            TargetFather.push_back(MinTargetPos);
-
-        }
-
-
-        int CONNECT = 0;
-
-
-        //check whether new node near the other tree, first check near target tree
-        MinTargetCount = 0;
-        for (vector<int>::iterator sit = TargetTree.begin(), send = TargetTree.end(); sit != send; sit++) {
-            TargetY = (*sit) % (2 * SIZEMAX);
-            TargetX = (*sit - TargetY) / (2 * SIZEMAX);
-            if (abs(StartSaveX - TargetX) + abs(StartSaveY - TargetY) <= 2 * STEPSIZE) {
-                int OUT = 0;
-                for (int i = min(StartSaveX, TargetX); i <= max(StartSaveX, TargetX); i++) {
-
-                    for (int j = min(StartSaveY, TargetY); j <= max(StartSaveY, TargetY); j++) {
-                        if (Obstacles[i][j] == 1) {
-                            OUT = 1;
-                            CONNECT = 0;
-                            break;
-                        }
-                    }
-                    if (OUT == 1)
-                        break;
-                }
-                if (OUT == 0)//connect
-                {
-                    CONNECT = 1;//connect to start tree
-                    vector<int> temp;
-                    temp.push_back((StartSaveX) * 2 * SIZEMAX + (StartSaveY));// put the node from start tree
-                    int CurrentPos = MinStartPos;//first add start tree, but reverse order
-
-                    while (StartFather[CurrentPos] != 0) {
-                        temp.push_back(StartTree[CurrentPos]);
-                        CurrentPos = StartFather[CurrentPos];
-
-                    }
-
-                    temp.push_back(StartTree[CurrentPos]);
-                    temp.push_back(StartTree[0]);
-
-                    for (vector<int>::iterator tpn = temp.end() - 1, tps = temp.begin(); tpn >= tps;
-                         tpn--) //in right order,vector.end is the one past the last
-                    {
-                        Solution.push_back(*tpn);
-                    }
-
-                    CurrentPos = MinTargetCount;//then add target tree, right order
-                    Solution.push_back(TargetTree[CurrentPos]);
-                    while (TargetFather[CurrentPos] != 0) {
-                        CurrentPos = TargetFather[CurrentPos];
-
-                        Solution.push_back(TargetTree[CurrentPos]);
-                    }
-                    CurrentPos = TargetFather[CurrentPos];
-                    Solution.push_back(TargetTree[CurrentPos]);
-                    break;
-                }
-            }
-            MinTargetCount++;
-
-        }
-
-        if (CONNECT == 0) ////check start tree
-        {
-            MinStartCount = 0;
-            for (vector<int>::iterator sit = StartTree.begin(), send = StartTree.end(); sit != send; sit++) {
-                StartY = (*sit) % (2 * SIZEMAX);
-                StartX = (*sit - StartY) / (2 * SIZEMAX);
-                if (abs(TargetSaveX - StartX) + abs(TargetSaveY - StartY) <= 2 * STEPSIZE) {
-                    int OUT = 0;
-                    for (int i = min(TargetSaveX, StartX); i <= max(TargetSaveX, StartX); i++) {
-
-                        for (int j = min(TargetSaveY, StartY); j <= max(TargetSaveY, StartY); j++) {
-                            if (Obstacles[i][j] == 1) {
-                                OUT = 1;
-                                CONNECT = 0;
-                                break;
-                            }
-                        }
-                        if (OUT == 1)
-                            break;
-                    }
-                    if (OUT == 0)//connect
-                    {
-                        CONNECT = 1;//connect to start tree
-                        vector<int> temp;
-                        temp.push_back((TargetSaveX) * 2 * SIZEMAX + (TargetSaveY));// put the node from target tree
-                        int CurrentPos = MinTargetPos;//first add target tree, but reverse order
-
-                        while (TargetFather[CurrentPos] != 0) {
-                            temp.push_back(TargetTree[CurrentPos]);
-                            CurrentPos = TargetFather[CurrentPos];
-
-                        }
-
-                        temp.push_back(TargetTree[CurrentPos]);
-                        temp.push_back(TargetTree[0]);
-
-                        for (vector<int>::iterator tpn = temp.end() - 1, tps = temp.begin(); tpn != tps;
-                             tpn--) //in right order, vector.end is the one past end
-                        {
-                            Solution.push_back(*tpn);
-                        }
-
-                        CurrentPos = MinStartCount;//then add start tree, right order
-                        Solution.push_back(StartTree[CurrentPos]);
-                        while (StartFather[CurrentPos] != 0) {
-                            CurrentPos = StartFather[CurrentPos];
-
-                            Solution.push_back(StartTree[CurrentPos]);
-                        }
-                        CurrentPos = StartFather[CurrentPos];
-                        Solution.push_back(StartTree[CurrentPos]);
-                        break;
-                    }
-                }
-                MinStartCount++;
-
-            }
-        }
-
-
-        if (CONNECT == 1) // FOUND solution
-        {
-            cout << "Path Found!" << endl;
-            //the order in Solution is the path, now smooth
-
-            int span = 2; //follow rrt
-            while (span < Solution.size()) {
-                bool changed = false;
-                for (int i = 0; i + span < Solution.size(); i++) {
-                    bool CanErase = true;// true to erase
-                    int YY = (Solution[i]) % (2 * SIZEMAX);
-
-                    int XX = (Solution[i] - YY) / (2 * SIZEMAX);
-
-                    int YYY = (Solution[i + span]) % (2 * SIZEMAX);
-                    int XXX = (Solution[i + span] - YY) / (2 * SIZEMAX);
-                    for (int ii = min(XX, XXX); ii <= max(XX, XXX); ii++) {
-                        for (int jj = min(YY, YYY); jj <= max(YY, YYY); jj++) {
-                            if (Obstacles[ii][jj] == 1) {
-                                CanErase = false;
-                                break;
-                            }
-                        }
-                        if (!CanErase)
-                            break;
-                    }
-
-
-                    if (CanErase) {
-                        for (int x = 1; x < span; x++) {
-                            Solution.erase(Solution.begin() + i + 1);
-                        }
-                        changed = true;
-                    }
-                }
-
-                if (!changed) span++;
-            }
-
-
-            glLineWidth(mKeyFrameLineWidth);
-            glColor3f(0.0, 1.0, 0.0);
-            glBegin(GL_LINES);
-            for (vector<int>::iterator st = Solution.begin(), end = Solution.end(); (st + 1) != end;
-                 st++) //in right order
-            {
-                int YY = (*st) % (2 * SIZEMAX);
-                int XX = (*st - YY) / (2 * SIZEMAX);
-                XX = XX - SIZEMAX;
-                YY = YY - SIZEMAX;//center at SIZEMAX,SIZEMAX
-                glVertex3f(float(XX * LeafSize), 5.0, float(YY * LeafSize));
-
-                YY = (*(st + 1)) % (2 * SIZEMAX);
-                XX = (*(st + 1) - YY) / (2 * SIZEMAX);
-                XX = XX - SIZEMAX;
-                YY = YY - SIZEMAX;//center at SIZEMAX,SIZEMAX
-                glVertex3f(float(XX * LeafSize), 5.0, float(YY * LeafSize));
-
-            }
-            glEnd();
-
-            break;
-
-        }
-
+    glPointSize(2);
+    glBegin(GL_POINTS);
+    glColor3f(0.25,0.21,0.16);
+    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vTargetTree.begin();st!=vTargetTree.end();st++) {
+
+        int yy = (*st)->mPoint[1];
+        int xx = (*st)->mPoint[0];
+        glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
     }
 
-    cout << "Iteration Times(Max 10000) =  " << count << endl;
+    glEnd();
+    cout << "Iteration Times(Max 10000) =  " << nCount << endl;
 
 }
 

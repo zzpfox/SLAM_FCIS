@@ -156,8 +156,8 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
         while(true)
         {
             std::cout << "\x1B[33m" << "Do you wanna delete the previously stored DepthImages? " << std::endl
-                      << "'y' or 'yes': to save" << std::endl
-                      << "'n' or 'no': not to save"<< "\x1B[0m" << std::endl;
+                      << "'y' or 'yes': to delete" << std::endl
+                      << "'n' or 'no': not to delete"<< "\x1B[0m" << std::endl;
 
             std::cin >> deleteDepth;
             std::cout << "Your input is: " << deleteDepth << std::endl;
