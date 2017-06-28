@@ -53,12 +53,19 @@ public:
 
     std::shared_ptr<Map> mpMap;
     bool mbCalPointCloud;
+    bool mbFindObjCalPoints;
+    std::vector<float> mvStart;
+    std::vector<float> mvTarget;
     std::unique_ptr<std::thread> mpThreadOctomap;
     static std::string msDepthImagesPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             int begin, int step);
+
+    void FindObjects();
+
+    void CalPointCloud();
 
     void PathPlanning(std::vector<float> &start, std::vector<float> &target);
 

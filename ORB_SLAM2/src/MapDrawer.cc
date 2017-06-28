@@ -53,62 +53,215 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mCameraSize = fSettings["Viewer.CameraSize"];
     mCameraLineWidth = fSettings["Viewer.CameraLineWidth"];
     mbCalPointCloud = true;
+    mbFindObjCalPoints = true;
 }
 
 void MapDrawer::DrawPointCloud()
 {
-    if (mbCalPointCloud) {
-        std::chrono::time_point<std::chrono::system_clock> start;
-        std::chrono::time_point<std::chrono::system_clock> end;
-        start = std::chrono::system_clock::now();
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
-
-        vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
-        int sampleFrequency = 4;
-        vector<std::shared_ptr<KeyFrame> > sampledVPKFs;
-        int kFNum = vpKFs.size();
-        for (int j = 0; j < kFNum; j += sampleFrequency) {
-            sampledVPKFs.push_back(vpKFs[j]);
-        }
-        int numThreads = 6;
-        std::thread threads[numThreads];
-        for (int i = 0; i < numThreads; i++) {
-            threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), cloud, i,
-                                     numThreads);
-        }
-        for (auto &th : threads) {
-            th.join();
-        }
-        {
-            unique_lock<mutex> lock(mMutexMCloud);
-            if (cloud->points.size() > 0)
-                FilterPointCloud(cloud, mCloud);
-//            mCloud = cloud;
-        }
-        if (mpThreadOctomap) {
-            mpThreadOctomap->join();
-        }
-        mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
+    if (mbCalPointCloud)
+    {
+        CalPointCloud();
         mbCalPointCloud = false;
-
-        end = std::chrono::system_clock::now();
-        std::chrono::duration<double> elapsed_seconds = end - start;
-        std::cout << "Total Number of Points: " << mCloud->size() << std::endl;
-        std::cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
     }
-//    glPointSize(mPointSize);
-//    glBegin(GL_POINTS);
-//    glColor3f(1.0, 0.0, 1.0);
-//    for (auto p : mCloud->points) {
-//        glVertex3f(p.x, p.y, p.z);
-//    }
-//
-//    glEnd();
-    std::vector<float>  start = {0, 0};
-    std::vector<float> target = {1.5, -5.5};
-    PathPlanning(start, target);
+    glPointSize(mPointSize);
+    glBegin(GL_POINTS);
+    glColor3f(1.0, 0.0, 1.0);
+    for (auto p : mCloud->points) {
+        glVertex3f(p.x, p.y, p.z);
+    }
+
+    glEnd();
 }
 
+void MapDrawer::CalPointCloud()
+{
+    std::chrono::time_point<std::chrono::system_clock> start;
+    std::chrono::time_point<std::chrono::system_clock> end;
+    start = std::chrono::system_clock::now();
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+
+    vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
+    int sampleFrequency = 4;
+    vector<std::shared_ptr<KeyFrame> > sampledVPKFs;
+    int kFNum = vpKFs.size();
+    for (int j = 0; j < kFNum; j += sampleFrequency) {
+        sampledVPKFs.push_back(vpKFs[j]);
+    }
+    int numThreads = 6;
+    std::thread threads[numThreads];
+    for (int i = 0; i < numThreads; i++) {
+        threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), cloud, i,
+                                 numThreads);
+    }
+    for (auto &th : threads) {
+        th.join();
+    }
+    {
+        unique_lock<mutex> lock(mMutexMCloud);
+        if (cloud->points.size() > 0)
+            FilterPointCloud(cloud, mCloud);
+//            mCloud = cloud;
+    }
+    if (mpThreadOctomap) {
+        mpThreadOctomap->join();
+    }
+    mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
+
+    end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = end - start;
+    std::cout << "Total Number of Points: " << mCloud->size() << std::endl;
+    std::cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
+}
+
+void MapDrawer::FindObjects()
+{
+    if (mbFindObjCalPoints)
+    {
+        CalPointCloud();
+        auto objectMap = mpMap->mObjectMap;
+        std::vector<std::string> objectLists;
+        int maxObjectNameLen = 0;
+        for (auto kv : objectMap)
+        {
+            if (kv.first.length() > maxObjectNameLen)
+            {
+                maxObjectNameLen = kv.first.size();
+            }
+            objectLists.push_back(kv.first);
+        }
+        std::cout << "==========================================" << std::endl;
+        std::cout << "               Objects List               " << std::endl;
+        std::cout << "------------------------------------------" << std::endl;
+        for (int i = 0; i < objectLists.size(); i++)
+        {
+            if (i % 3 == 0 && i != 0)
+            {
+                std::cout << std::endl;
+            }
+            std::cout << std::setw(maxObjectNameLen + 1) << objectLists[i] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "------------------------------------------" << std::endl;
+        std::vector<float> start(2, 0);
+        std::vector<float> target(2, 0);
+        srand(time(NULL));
+        std::cin.clear();
+        std::cout << "\x1B[33m" << "Enter the Start Object " << "\x1B[0m" << std::endl;
+        std::string object;
+        std::getline(std::cin, object);
+        std::cout << "Your input is: " << object << std::endl;
+        std::cin.clear();
+        if (objectMap.count(object) > 0)
+        {
+            std::vector<std::vector<double> > poses;
+            int maxTrials = 100;
+            int count = 0;
+            std::unordered_map<long unsigned int, ObjectPos>::iterator randomIt;
+            do
+            {
+                randomIt = std::next(std::begin(objectMap[object]), rand() % objectMap[object].size());
+                poses = (*randomIt).second.Pcs;
+                count++;
+                if (count >= maxTrials)
+                {
+                    std::cout << "Cannot find object [" << object << "]" << std::endl;
+                    return;
+                }
+            }while(poses.size() <= 0);
+            std::cout << "poses.size() " << poses.size() << std::endl;
+            int randInt = rand() % poses.size();
+            std::cout << "randInt: " << randInt << std::endl;
+            std::vector<double> dSelectedObj = poses[randInt];
+            std::vector<float> fSelectedObj(dSelectedObj.begin(), dSelectedObj.end());
+            cv::Mat Twc;
+            cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << fSelectedObj[0], fSelectedObj[1], fSelectedObj[2], 1.0);
+            vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
+            bool KeyFrameFound = false;
+            for (vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin(); it != vpKFs.end(); it++)
+            {
+                if ((*it)->mnId == (*randomIt).first)
+                {
+                    KeyFrameFound = true;
+                    Twc = (*it)->GetPoseInverse();
+                }
+            }
+            if (!KeyFrameFound)
+            {
+                std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
+                return;
+            }
+            cv::Mat x3Dw = Twc * x3Dc;
+            start[0] = x3Dw.at<float>(0, 0);
+            start[1] = x3Dw.at<float>(2, 0);
+        }
+        else
+        {
+            std::cout << "Object does not exist" << std::endl
+                      <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+            return;
+        }
+
+        std::cout << "\x1B[33m" << "Enter the Target Object " << "\x1B[0m" << std::endl;
+        std::getline(std::cin, object);
+        std::cout << "Your input is: " << object << std::endl;
+        std::cin.clear();
+        if (objectMap.count(object) > 0)
+        {
+            std::vector<std::vector<double> > poses;
+            int maxTrials = 100;
+            int count = 0;
+            std::unordered_map<long unsigned int, ObjectPos>::iterator randomIt;
+            do
+            {
+                randomIt = std::next(std::begin(objectMap[object]), rand() % objectMap[object].size());
+                poses = (*randomIt).second.Pcs;
+                count++;
+                if (count >= maxTrials)
+                {
+                    std::cout << "Cannot find object [" << object << "]" << std::endl;
+                    return;
+                }
+            }while(poses.size() <= 0);
+            std::vector<double> dSelectedObj = poses[rand() % poses.size()];
+            std::vector<float> fSelectedObj(dSelectedObj.begin(), dSelectedObj.end());
+            cv::Mat Twc;
+            cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << fSelectedObj[0], fSelectedObj[1], fSelectedObj[2], 1.0);
+            vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
+            bool KeyFrameFound = false;
+            for (vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin(); it != vpKFs.end(); it++)
+            {
+                if ((*it)->mnId == (*randomIt).first)
+                {
+                    KeyFrameFound = true;
+                    Twc = (*it)->GetPoseInverse();
+                }
+            }
+            if (!KeyFrameFound)
+            {
+                std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
+                return;
+            }
+            cv::Mat x3Dw = Twc * x3Dc;
+            target[0] = x3Dw.at<float>(0, 0);
+            target[1] = x3Dw.at<float>(2, 0);
+        }
+        else
+        {
+            std::cout << "Object does not exist" << std::endl
+                      <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+            return;
+        }
+        std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
+        std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
+//    std::vector<float>  start = {0, 0};
+//    std::vector<float> target = {1.5, -5.5};
+        mbFindObjCalPoints = false;
+        mvStart = start;
+        mvTarget = target;
+    }
+    PathPlanning(mvStart, mvTarget);
+
+}
 bool MapDrawer::RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
                               std::vector<std::vector<int> > &mObstacles,
                               int nMiddleX, int nMiddleY, int ncStepSize)
@@ -140,7 +293,9 @@ bool MapDrawer::RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
     for (int i = pMin->mPoint[0]; abs(i - pMin->mPoint[0]) < nStepSizeX; i += nStepX) {
         int OUT = 0;
         for (int j = pMin->mPoint[1]; abs(j - pMin->mPoint[1]) < nStepSizeY; j += nStepY) {
-            if (mObstacles[j][i] == 1)//found obstacle
+            if (i < 0 || i >= mObstacles[0].size() ||
+                j < 0 || j >= mObstacles.size() ||
+                mObstacles[j][i] == 1)//found obstacle or out of bounds
             {
                 nConnect = 0;// not directly connect
                 OUT = 1;
@@ -225,7 +380,7 @@ void MapDrawer::PathPlanning(std::vector<float> &start, std::vector<float> &targ
                   << "\x1B[0m" << std::endl;
         exit(EXIT_FAILURE);
     }
-    glPointSize(mPointSize * 5);
+    glPointSize(mPointSize * 6);
     glBegin(GL_POINTS);
     glColor3f(1.0, 0.0, 0.0);
     glVertex3f(start[0], 5, start[1]);
@@ -287,11 +442,6 @@ void MapDrawer::PathPlanning(std::vector<float> &start, std::vector<float> &targ
 //                   [fcLeafSize, ncSizeMax](float d) -> int{return
 //                       (static_cast<int> (d / fcLeafSize) + ncSizeMax);});
 
-    std::vector<std::shared_ptr<RRTNode> > vStartTree;
-    std::vector<std::shared_ptr<RRTNode> > vTargetTree;
-
-    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
-    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
 
     glPointSize(mPointSize);
     glBegin(GL_POINTS);
@@ -299,28 +449,81 @@ void MapDrawer::PathPlanning(std::vector<float> &start, std::vector<float> &targ
     for (auto p : mCloud->points) {
         int nTmpX = static_cast<int>((p.x - vBounds[0]) / fcLeafSize);
         int nTmpY = static_cast<int>((p.z - vBounds[2]) / fcLeafSize);
-        if (nTmpX > fcObstacleWidth && nTmpX < ncSizeX - fcObstacleWidth
-            && nTmpY > fcObstacleWidth && nTmpY < ncSizeY - fcObstacleWidth)//not at the boundary, draw a circle
+        for (int i = nTmpX - fcObstacleWidth; i < nTmpX + fcObstacleWidth; i++)
         {
-            int NumOfParts = 60;//divide a circle into NumOfParts parts
-            for (int i = 0; i < NumOfParts; i++) {
-                float theta = 2 * 3.14159265 * i / float(NumOfParts);
-                //set obstacle,middle is [ncSizeMax,ncSizeMax]
-                mObstacles[nTmpY + int(fcObstacleWidth * cos(theta))]
-                [nTmpX + int(fcObstacleWidth * sin(theta))] = 1;
-                glVertex3f(p.x + fcObstacleWidth * fcLeafSize * cos(theta),
-                           5,
-                           p.z + fcObstacleWidth * fcLeafSize * sin(theta));
+            for (int j = nTmpY - fcObstacleWidth; j < nTmpY + fcObstacleWidth; j++)
+            {
+                if (i >= 0 && i < ncSizeX && j >= 0 && j < ncSizeY)
+                {
+                    mObstacles[j][i] = 1;
+                    glVertex3f(i * fcLeafSize + vBounds[0],
+                               5,
+                               j * fcLeafSize + vBounds[2]);
+                }
+
             }
-        }
-        else {
-            //set obstacle,middle is [ncSizeMax,ncSizeMax]
-            mObstacles[nTmpY][nTmpX] = 1;
-            glVertex3f(p.x, 5, p.z);
         }
     }
     glEnd();
 
+    int nSearchWidth = 40;
+    std::vector<int> tmpStart(2, 0);
+    int minDistance = std::numeric_limits<int>::max();
+    for (int i = -nSearchWidth; i < nSearchWidth; i++)
+    {
+        for (int j = -nSearchWidth; j < nSearchWidth; j++)
+        {
+            int y = nStart[1] + i;
+            int x = nStart[0] + j;
+            if (y >= 0 && y < ncSizeY && x >= 0 && x < ncSizeX)
+            {
+                if (mObstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
+                {
+                    minDistance = abs(i) + abs(j);
+                    tmpStart[0] = x;
+                    tmpStart[1] = y;
+                }
+
+            }
+        }
+    }
+    nStart = tmpStart;
+
+    std::vector<int> tmpTarget(2, 0);
+    minDistance = std::numeric_limits<int>::max();
+    for (int i = -nSearchWidth; i < nSearchWidth; i++)
+    {
+        for (int j = -nSearchWidth; j < nSearchWidth; j++)
+        {
+            int y = nTarget[1] + i;
+            int x = nTarget[0] + j;
+            if (y >= 0 && y < ncSizeY && x >= 0 && x < ncSizeX)
+            {
+                if (mObstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
+                {
+                    minDistance = abs(i) + abs(j);
+                    tmpTarget[0] = x;
+                    tmpTarget[1] = y;
+                }
+
+            }
+        }
+    }
+    nTarget = tmpTarget;
+    std::cout << "ncSizeX: " << ncSizeX << "  ncSizeY: " << ncSizeY << std::endl;
+    std::cout << "Start position: " << nStart[0] << " " << nStart[1] << std::endl;
+    std::cout << "Target position: " << nTarget[0] << " " << nTarget[1] << std::endl;
+    glPointSize(mPointSize * 6);
+    glBegin(GL_POINTS);
+    glColor3f(1.0, 0.5, 0.0);
+    glVertex3f(nStart[0] * fcLeafSize + vBounds[0], 5, nStart[1] * fcLeafSize + vBounds[2]);
+    glVertex3f(nTarget[0] * fcLeafSize + vBounds[0], 5, nTarget[1] * fcLeafSize + vBounds[2]);
+    glEnd();
+    std::vector<std::shared_ptr<RRTNode> > vStartTree;
+    std::vector<std::shared_ptr<RRTNode> > vTargetTree;
+
+    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
+    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
     int nCount = 0;
     int ncStepSize = 6; //pixel
 

@@ -75,6 +75,7 @@ void Viewer::Run()
     pangolin::Var<bool> menuShowGraph("menu.Show Graph", true, true);
     pangolin::Var<bool> menuLocalizationMode("menu.Localization Mode", mbReuseMap, true);
     pangolin::Var<bool> menuShowDenseMap("menu.Show DenseMap", false, true);
+    pangolin::Var<bool> menuFetchObjects("menu.Fetch Objects", false, true);
     pangolin::Var<bool> menuShowSegObjects("menu.Show SegObjects", false, true);
     pangolin::Var<bool> menuSaveMap("menu.Save Map", false, true);
     pangolin::Var<bool> menuReset("menu.Reset", false, false);
@@ -150,6 +151,14 @@ void Viewer::Run()
         else {
             bShowObject = true;
         }
+
+        if (menuFetchObjects) {
+            mpMapDrawer->FindObjects();
+        }
+        else {
+            mpMapDrawer->mbFindObjCalPoints = true;
+        }
+
 
         if (menuSaveMap) {
             if (bSaveMap) {
