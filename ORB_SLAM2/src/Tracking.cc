@@ -1189,7 +1189,7 @@ void Tracking::SaveSegResultToMap(const Client::ClsPosPairs &clsPosPairs, long u
         int posesSize = poses.size();
         for (int j = 0; j < posesSize; j++) {
             std::vector<double> Pc = poses[j];
-            bool zeros = std::all_of(Pc.begin(), Pc.end(), [](double i){return i==0;});
+            bool zeros = std::all_of(Pc.begin(), Pc.end(), [](double i){return i==0.0;});
             if (!zeros) {
                 objpos.addInstance(Pc);
             }

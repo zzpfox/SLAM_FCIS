@@ -43,6 +43,7 @@ endif ()
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(PCL 1.8 REQUIRED)
+find_package(OMPL QUIET)
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
@@ -52,6 +53,7 @@ include_directories(
         ${PROJECT_SOURCE_DIR}/../../../include
         ${Pangolin_INCLUDE_DIRS}
         ${PCL_INCLUDE_DIRS}
+        ${OMPL_INCLUDE_DIRS}
 )
 
 set(LIBS
@@ -62,6 +64,9 @@ set(LIBS
         ${PROJECT_SOURCE_DIR}/../../../Thirdparty/g2o/lib/libg2o.so
         ${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM2.so
         ${PCL_LIBRARIES}
+        ${OMPL_LIBRARIES}
+        ${OMPLAPP_LIBRARIES}
+        ompl
         )
 
 ## Node for monocular camera

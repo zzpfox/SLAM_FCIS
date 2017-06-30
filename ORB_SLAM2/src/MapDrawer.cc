@@ -36,24 +36,33 @@
 #include <limits>
 #include <stdlib.h>
 #include <time.h>
+#include "OmplPathPlanning.h"
+
 
 namespace ORB_SLAM2
 {
 std::string MapDrawer::msDepthImagesPath = "./Data/DepthImages";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
-      mCloud(new pcl::PointCloud<pcl::PointXYZ>)
+      mCloud(new pcl::PointCloud<pcl::PointXYZ>),
+      mfcLeafSize(0.025)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
-
+    if (!fSettings.isOpened())
+    {
+        cerr << "failed to open " << strSettingPath << endl;
+        exit(EXIT_FAILURE);
+    }
     mKeyFrameSize = fSettings["Viewer.KeyFrameSize"];
     mKeyFrameLineWidth = fSettings["Viewer.KeyFrameLineWidth"];
     mGraphLineWidth = fSettings["Viewer.GraphLineWidth"];
     mPointSize = fSettings["Viewer.PointSize"];
     mCameraSize = fSettings["Viewer.CameraSize"];
     mCameraLineWidth = fSettings["Viewer.CameraLineWidth"];
+    msPlanner = static_cast<std::string> (fSettings["PathPlanningPlanner"]);
     mbCalPointCloud = true;
     mbFindObjCalPoints = true;
+    mvBounds = std::vector<float> (4, 0.0);
 }
 
 void MapDrawer::DrawPointCloud()
@@ -153,46 +162,7 @@ void MapDrawer::FindObjects()
         std::cin.clear();
         if (objectMap.count(object) > 0)
         {
-            std::vector<std::vector<double> > poses;
-            int maxTrials = 100;
-            int count = 0;
-            std::unordered_map<long unsigned int, ObjectPos>::iterator randomIt;
-            do
-            {
-                randomIt = std::next(std::begin(objectMap[object]), rand() % objectMap[object].size());
-                poses = (*randomIt).second.Pcs;
-                count++;
-                if (count >= maxTrials)
-                {
-                    std::cout << "Cannot find object [" << object << "]" << std::endl;
-                    return;
-                }
-            }while(poses.size() <= 0);
-            std::cout << "poses.size() " << poses.size() << std::endl;
-            int randInt = rand() % poses.size();
-            std::cout << "randInt: " << randInt << std::endl;
-            std::vector<double> dSelectedObj = poses[randInt];
-            std::vector<float> fSelectedObj(dSelectedObj.begin(), dSelectedObj.end());
-            cv::Mat Twc;
-            cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << fSelectedObj[0], fSelectedObj[1], fSelectedObj[2], 1.0);
-            vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
-            bool KeyFrameFound = false;
-            for (vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin(); it != vpKFs.end(); it++)
-            {
-                if ((*it)->mnId == (*randomIt).first)
-                {
-                    KeyFrameFound = true;
-                    Twc = (*it)->GetPoseInverse();
-                }
-            }
-            if (!KeyFrameFound)
-            {
-                std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
-                return;
-            }
-            cv::Mat x3Dw = Twc * x3Dc;
-            start[0] = x3Dw.at<float>(0, 0);
-            start[1] = x3Dw.at<float>(2, 0);
+            RandomlyGetObjPose(object, start, objectMap);
         }
         else
         {
@@ -207,43 +177,7 @@ void MapDrawer::FindObjects()
         std::cin.clear();
         if (objectMap.count(object) > 0)
         {
-            std::vector<std::vector<double> > poses;
-            int maxTrials = 100;
-            int count = 0;
-            std::unordered_map<long unsigned int, ObjectPos>::iterator randomIt;
-            do
-            {
-                randomIt = std::next(std::begin(objectMap[object]), rand() % objectMap[object].size());
-                poses = (*randomIt).second.Pcs;
-                count++;
-                if (count >= maxTrials)
-                {
-                    std::cout << "Cannot find object [" << object << "]" << std::endl;
-                    return;
-                }
-            }while(poses.size() <= 0);
-            std::vector<double> dSelectedObj = poses[rand() % poses.size()];
-            std::vector<float> fSelectedObj(dSelectedObj.begin(), dSelectedObj.end());
-            cv::Mat Twc;
-            cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << fSelectedObj[0], fSelectedObj[1], fSelectedObj[2], 1.0);
-            vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
-            bool KeyFrameFound = false;
-            for (vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin(); it != vpKFs.end(); it++)
-            {
-                if ((*it)->mnId == (*randomIt).first)
-                {
-                    KeyFrameFound = true;
-                    Twc = (*it)->GetPoseInverse();
-                }
-            }
-            if (!KeyFrameFound)
-            {
-                std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
-                return;
-            }
-            cv::Mat x3Dw = Twc * x3Dc;
-            target[0] = x3Dw.at<float>(0, 0);
-            target[1] = x3Dw.at<float>(2, 0);
+            RandomlyGetObjPose(object, target, objectMap);
         }
         else
         {
@@ -253,398 +187,68 @@ void MapDrawer::FindObjects()
         }
         std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
         std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
-//    std::vector<float>  start = {0, 0};
-//    std::vector<float> target = {1.5, -5.5};
         mbFindObjCalPoints = false;
         mvStart = start;
         mvTarget = target;
+//        SimplePathPlanning(mvStart, mvTarget, mSolution, mObstacles);
+        OmplPathPlanning(mvStart, mvTarget, mSolution, mObstacles);
     }
-    PathPlanning(mvStart, mvTarget);
-
-}
-bool MapDrawer::RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
-                              std::vector<std::vector<int> > &mObstacles,
-                              int nMiddleX, int nMiddleY, int ncStepSize)
-{
-    int nDisMin = std::numeric_limits<int>::max();
-    int nConnect = 1;
-
-    std::shared_ptr<RRTNode> pMin = std::make_shared<RRTNode> (std::vector<int> (2, nDisMin));
-    for (vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
-        std::vector<int> vTmpPoint = (*sit)->mPoint;
-        int nTmpDist = abs(nMiddleX - vTmpPoint[0]) + abs(nMiddleY - vTmpPoint[1]);
-        if (nTmpDist < nDisMin) {
-            nDisMin = nTmpDist;
-            pMin = *sit;
-        }
-    }
-
-    if (nDisMin < 4)
-        return false;//means too close
-
-    int nStepX = pMin->mPoint[0] > nMiddleX ? (-1) : 1;
-    int nStepY = pMin->mPoint[1] > nMiddleY ? (-1) : 1;// different step along different direction
-
-    //use sin,cos to determine direction
-    float fRadius = sqrt(pow(float(pMin->mPoint[0] - nMiddleX), 2.0) + pow(float(pMin->mPoint[1] - nMiddleY), 2.0));
-    int nStepSizeX = int(float(ncStepSize * abs(pMin->mPoint[0] - nMiddleX)) / fRadius) + 1;// sin
-    int nStepSizeY = int(float(ncStepSize * abs(pMin->mPoint[1] - nMiddleY)) / fRadius) + 1;// cos
-
-    for (int i = pMin->mPoint[0]; abs(i - pMin->mPoint[0]) < nStepSizeX; i += nStepX) {
-        int OUT = 0;
-        for (int j = pMin->mPoint[1]; abs(j - pMin->mPoint[1]) < nStepSizeY; j += nStepY) {
-            if (i < 0 || i >= mObstacles[0].size() ||
-                j < 0 || j >= mObstacles.size() ||
-                mObstacles[j][i] == 1)//found obstacle or out of bounds
-            {
-                nConnect = 0;// not directly connect
-                OUT = 1;
-                break;
-            }
-        }
-        if (OUT == 1)
-            break;
-    }
-
-    if (nConnect == 1) {// add
-//            nStepX = pMinStart->mPoint[0] > nMiddleX ? (-1) : 1;
-//            nStepY = pMinStart->mPoint[1] > nMiddleY ? (-1) : 1;
-
-        int x = nStepX * nStepSizeX + pMin->mPoint[0];
-        int y = nStepY * nStepSizeY + pMin->mPoint[1];
-        std::vector<int> vTmpPoint = {x, y};
-        std::shared_ptr<RRTNode> tmpNode = std::make_shared<RRTNode> (vTmpPoint);
-        tmpNode->addParent(pMin);
-        tree.push_back(tmpNode);
-        return true;
-    }
-    else
+    if (mvStart.size() == 2 && mvTarget.size() == 2)
     {
-        return false;
+        glPointSize(mPointSize * 6);
+        glBegin(GL_POINTS);
+        glColor3f(1.0, 0.0, 0.0);
+        glVertex3f(mvStart[0], 5, mvStart[1]);
+        glVertex3f(mvTarget[0], 5, mvTarget[1]);
+        glEnd();
     }
-
-}
-
-bool MapDrawer::RRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
-                                  std::vector<std::shared_ptr<RRTNode> > &treePop,
-                                  std::vector<std::vector<int> > &mObstacles,
-                                  std::vector<std::shared_ptr<RRTNode> > &vSolution,
-                                  int ncStepSize)
-{
-    //check whether new node near the other tree, first check near target tree
-    bool bConnect = false;
-    for (std::vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
-        int y = (*sit)->mPoint[1];
-        int x = (*sit)->mPoint[0];
-        if (abs(treePop.back()->mPoint[0] - x) + abs(treePop.back()->mPoint[1]  - y) <= 2 * ncStepSize) {
-            int nOut = 0;
-            for (int i = min(treePop.back()->mPoint[0], x); i <= max(treePop.back()->mPoint[0], x); i++) {
-
-                for (int j = min(treePop.back()->mPoint[1], y); j <= max(treePop.back()->mPoint[1], y); j++) {
-                    if (mObstacles[j][i] == 1) {
-                        nOut = 1;
-                        bConnect = false;
-                        break;
-                    }
-                }
-                if (nOut == 1)
-                    break;
-            }
-            if (!nOut)//connect
-            {
-                bConnect = true;//connect to start tree
-                vSolution.clear();
-                vSolution.push_back(treePop.back());
-                while(vSolution.back()->mParent)
-                {
-                    vSolution.push_back(vSolution.back()->mParent);
-                }
-                std::reverse(vSolution.begin(), vSolution.end());
-                vSolution.push_back(*sit);
-                while(vSolution.back()->mParent)
-                {
-                    vSolution.push_back(vSolution.back()->mParent);
-                }
-                break;
-            }
-        }
-    }
-    return bConnect;
-}
-void MapDrawer::PathPlanning(std::vector<float> &start, std::vector<float> &target)
-{
-
-    if (start.size() != 2 || target.size() != 2)
+    glLineWidth(mKeyFrameLineWidth * 4);
+    glColor3f(0.0, 1.0, 0.0);
+    glBegin(GL_LINES);
+    for (std::vector<std::vector<float> >::iterator st = mSolution.begin(); (st + 1) != mSolution.end(); st++) //in right order
     {
-        std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
-                  << "\x1B[0m" << std::endl;
-        exit(EXIT_FAILURE);
+        glVertex3f((*st)[0], 5.0, (*st)[1]);
+        glVertex3f((*(st+1))[0], 5.0, (*(st+1))[1]);
     }
-    glPointSize(mPointSize * 6);
-    glBegin(GL_POINTS);
-    glColor3f(1.0, 0.0, 0.0);
-    glVertex3f(start[0], 5, start[1]);
-    glVertex3f(target[0], 5, target[1]);
     glEnd();
-    std::vector<float> vBounds = {std::numeric_limits<float>::max(),
-                                  std::numeric_limits<float>::min(),
-                                  std::numeric_limits<float>::max(),
-                                  std::numeric_limits<float>::min()};
-    for (auto p: mCloud->points)
-    {
-        if (p.x < vBounds[0])
-        {
-            vBounds[0] = p.x;
-        }
-        if (p.x > vBounds[1])
-        {
-            vBounds[1] = p.x;
-        }
-        if (p.z < vBounds[2])
-        {
-            vBounds[2] = p.z;
-        }
-        if (p.z > vBounds[3])
-        {
-            vBounds[3] = p.z;
-        }
-    }
-    const int nMaxIter = 10000;
-    const float fcLeafSize = 0.025;
-    const int ncSizeX = static_cast<int> ((vBounds[1] - vBounds[0] + 0.2) / fcLeafSize);
-    const int ncSizeY = static_cast<int> ((vBounds[3] - vBounds[2] + 0.2) / fcLeafSize);
-    const float fcObstacleWidth = 9;//these three should choose properly. ncSizeMax*fcLeafSize is the range of the enviroment.
-    //LeafSIze * fcObstacleWidth is the width of the obstacles that extend, equal to half of the robot width
-    //37.5cm--->15 is the whole body, 22.5cm-->9 is the test body
-    std::vector<std::vector<int> > mObstacles(ncSizeY, std::vector<int> (ncSizeX, 0));
-    // origin is (ncSizeMax,ncSizeMax), minimal leaf is fcLeafSize,
-    // so the range is [-ncSizeMax * fcLeafSize,ncSizeMax * fcLeafSize]*
-    // [-ncSizeMax * fcLeafSize,ncSizeMax * fcLeafSize]
-    std::vector<int> nStart(2, 0);
-    std::vector<int> nTarget(2, 0);
-    nStart[0] = static_cast<int> ((start[0] - vBounds[0]) / fcLeafSize);
-    nStart[1] = static_cast<int> ((start[1] - vBounds[2]) / fcLeafSize);
-    nTarget[0] = static_cast<int> ((target[0] - vBounds[0]) / fcLeafSize);
-    nTarget[1] = static_cast<int> ((target[1] - vBounds[2]) / fcLeafSize);
-    if (nStart[0] < 0 || nStart[0] >= ncSizeX ||
-        nStart[1] < 0 || nStart[1] >= ncSizeY ||
-        nTarget[0] < 0 || nTarget[0] >= ncSizeX ||
-        nTarget[1] < 0 || nTarget[1] >= ncSizeY)
-    {
-        std::cout << "\x1B[31m" << "ERROR: start and target vectors out of bounds"
-                  << "\x1B[0m" << std::endl;
-        exit(EXIT_FAILURE);
-    }
-//    std::transform(start.begin(), start.end(), nStart.begin(),
-//                   [fcLeafSize, ncSizeMax](float d) -> int{return
-//                       (static_cast<int> (d / fcLeafSize) + ncSizeMax);});
-//    std::transform(target.begin(), target.end(), nTarget.begin(),
-//                   [fcLeafSize, ncSizeMax](float d) -> int{return
-//                       (static_cast<int> (d / fcLeafSize) + ncSizeMax);});
-
-
     glPointSize(mPointSize);
+    {
+        glPushAttrib(GL_ENABLE_BIT);
+        if (mSolution.size() > 0 && mvStart.size() == 2 && mvTarget.size() == 2)
+        {
+            glLineStipple(2, 0x00FF);
+            glEnable(GL_LINE_STIPPLE);
+            glLineWidth(mKeyFrameLineWidth * 4);
+            glColor3f(1.0, 1.0, 0.0);
+            glBegin(GL_LINES);
+            glVertex3f(mvStart[0], 5.0, mvStart[1]);
+            glVertex3f(mSolution.front()[0], 5.0, mSolution.front()[1]);
+            glEnd();
+            glBegin(GL_LINES);
+            glVertex3f(mvTarget[0], 5.0, mvTarget[1]);
+            glVertex3f(mSolution.back()[0], 5.0, mSolution.back()[1]);
+            glEnd();
+            glPopAttrib();
+
+        }
+    }
+
+
     glBegin(GL_POINTS);
     glColor3f(0.0, 0.0, 1.0);
-    for (auto p : mCloud->points) {
-        int nTmpX = static_cast<int>((p.x - vBounds[0]) / fcLeafSize);
-        int nTmpY = static_cast<int>((p.z - vBounds[2]) / fcLeafSize);
-        for (int i = nTmpX - fcObstacleWidth; i < nTmpX + fcObstacleWidth; i++)
-        {
-            for (int j = nTmpY - fcObstacleWidth; j < nTmpY + fcObstacleWidth; j++)
-            {
-                if (i >= 0 && i < ncSizeX && j >= 0 && j < ncSizeY)
-                {
-                    mObstacles[j][i] = 1;
-                    glVertex3f(i * fcLeafSize + vBounds[0],
-                               5,
-                               j * fcLeafSize + vBounds[2]);
-                }
-
-            }
-        }
-    }
-    glEnd();
-
-    int nSearchWidth = 40;
-    std::vector<int> tmpStart(2, 0);
-    int minDistance = std::numeric_limits<int>::max();
-    for (int i = -nSearchWidth; i < nSearchWidth; i++)
+    for (int i = 0; i < mObstacles.size(); i++)
     {
-        for (int j = -nSearchWidth; j < nSearchWidth; j++)
+        for (int j = 0; j < mObstacles[0].size(); j++)
         {
-            int y = nStart[1] + i;
-            int x = nStart[0] + j;
-            if (y >= 0 && y < ncSizeY && x >= 0 && x < ncSizeX)
+            if (mObstacles[i][j] == 1)
             {
-                if (mObstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
-                {
-                    minDistance = abs(i) + abs(j);
-                    tmpStart[0] = x;
-                    tmpStart[1] = y;
-                }
-
+                glVertex3f(j * mfcLeafSize + mvBounds[0],
+                           5,
+                           i * mfcLeafSize + mvBounds[2]);
             }
         }
-    }
-    nStart = tmpStart;
-
-    std::vector<int> tmpTarget(2, 0);
-    minDistance = std::numeric_limits<int>::max();
-    for (int i = -nSearchWidth; i < nSearchWidth; i++)
-    {
-        for (int j = -nSearchWidth; j < nSearchWidth; j++)
-        {
-            int y = nTarget[1] + i;
-            int x = nTarget[0] + j;
-            if (y >= 0 && y < ncSizeY && x >= 0 && x < ncSizeX)
-            {
-                if (mObstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
-                {
-                    minDistance = abs(i) + abs(j);
-                    tmpTarget[0] = x;
-                    tmpTarget[1] = y;
-                }
-
-            }
-        }
-    }
-    nTarget = tmpTarget;
-    std::cout << "ncSizeX: " << ncSizeX << "  ncSizeY: " << ncSizeY << std::endl;
-    std::cout << "Start position: " << nStart[0] << " " << nStart[1] << std::endl;
-    std::cout << "Target position: " << nTarget[0] << " " << nTarget[1] << std::endl;
-    glPointSize(mPointSize * 6);
-    glBegin(GL_POINTS);
-    glColor3f(1.0, 0.5, 0.0);
-    glVertex3f(nStart[0] * fcLeafSize + vBounds[0], 5, nStart[1] * fcLeafSize + vBounds[2]);
-    glVertex3f(nTarget[0] * fcLeafSize + vBounds[0], 5, nTarget[1] * fcLeafSize + vBounds[2]);
-    glEnd();
-    std::vector<std::shared_ptr<RRTNode> > vStartTree;
-    std::vector<std::shared_ptr<RRTNode> > vTargetTree;
-
-    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
-    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
-    int nCount = 0;
-    int ncStepSize = 6; //pixel
-
-    std::vector<std::shared_ptr<RRTNode> > vSolution;
-    srand (time(NULL));
-    while (nCount < nMaxIter)  //max iteration
-    {
-        nCount++;
-        int nMiddleX = rand() % ncSizeX;
-        int nMiddleY = rand() % ncSizeY;
-
-        int innerMaxIter = 50;
-        for (int iter = 0; iter < innerMaxIter; iter++)
-        {
-            if (mObstacles[nMiddleY][nMiddleX] == 0)
-            {
-                break;
-            }
-            nMiddleX = rand() % ncSizeX;
-            nMiddleY = rand() % ncSizeY;
-            if (iter >= innerMaxIter - 1)
-            {
-                std::cout << "\x1B[31m" << "ERROR: cannot generate a collision-free random point"
-                          << "\x1B[0m" << std::endl;
-                exit(EXIT_FAILURE);
-            }
-        }
-        if (!RRTTreeExpand(vStartTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
-        {
-            continue;
-        };
-        if (!RRTTreeExpand(vTargetTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
-        {
-            continue;
-        };
-
-        if (!RRTTreesIntersect(vTargetTree, vStartTree, mObstacles, vSolution, ncStepSize))
-        {
-            if (!RRTTreesIntersect(vStartTree, vTargetTree, mObstacles, vSolution, ncStepSize))
-            {
-                continue;
-            }
-        }
-
-
-        cout << "Path Found!" << endl;
-        //the order in Solution is the path, now smooth
-        int nSpan = 2; //follow rrt
-        while (nSpan < vSolution.size()) {
-            bool bChanged = false;
-            for (int i = 0; i + nSpan < vSolution.size(); i++) {
-                bool bCanErase = true;// true to erase
-                int yy = vSolution[i]->mPoint[1];
-                int xx = vSolution[i]->mPoint[0];
-                int yyy = vSolution[i + nSpan]->mPoint[1];
-                int xxx = vSolution[i + nSpan]->mPoint[0];
-
-                for (int ii = min(xx, xxx); ii <= max(xx, xxx); ii++) {
-                    for (int jj = min(yy, yyy); jj <= max(yy, yyy); jj++) {
-                        if (mObstacles[jj][ii] == 1) {
-                            bCanErase = false;
-                            break;
-                        }
-                    }
-                    if (!bCanErase)
-                        break;
-                }
-
-
-                if (bCanErase) {
-                    for (int x = 1; x < nSpan; x++) {
-                        vSolution.erase(vSolution.begin() + i + 1);
-                    }
-                    bChanged = true;
-                }
-            }
-
-            if (!bChanged) nSpan++;
-        }
-
-
-        glLineWidth(mKeyFrameLineWidth * 4);
-        glColor3f(0.0, 1.0, 0.0);
-        glBegin(GL_LINES);
-        for (std::vector<std::shared_ptr<RRTNode> >::iterator st = vSolution.begin(); (st + 1) != vSolution.end(); st++) //in right order
-        {
-            int yy = (*st)->mPoint[1];
-            int xx = (*st)->mPoint[0];
-            glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
-            int yyy = (*(st + 1))->mPoint[1];
-            int xxx = (*(st + 1))->mPoint[0];
-            glVertex3f(xxx * fcLeafSize + vBounds[0], 5.0, yyy * fcLeafSize + vBounds[2]);
-
-        }
-        glEnd();
-        break;
-    }
-    glPointSize(2);
-    glBegin(GL_POINTS);
-    glColor3f(1.0,0.0,0.5);
-    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vStartTree.begin();st!=vStartTree.end();st++) {
-
-        int yy = (*st)->mPoint[1];
-        int xx = (*st)->mPoint[0];
-        glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
     }
     glEnd();
-
-
-    glPointSize(2);
-    glBegin(GL_POINTS);
-    glColor3f(0.25,0.21,0.16);
-    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vTargetTree.begin();st!=vTargetTree.end();st++) {
-
-        int yy = (*st)->mPoint[1];
-        int xx = (*st)->mPoint[0];
-        glVertex3f(xx * fcLeafSize + vBounds[0], 5.0, yy * fcLeafSize + vBounds[2]);
-    }
-
-    glEnd();
-    cout << "Iteration Times(Max 10000) =  " << nCount << endl;
 
 }
 
@@ -663,6 +267,10 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
         std::string depthImageName = ss.str();
 
         cv::Mat depth = cv::imread(depthImageName.c_str(), cv::IMREAD_UNCHANGED);
+        if (depth.empty())
+        {
+            continue;
+        }
         depth.convertTo(depth, CV_32F, mpMap->mDepthMapFactor);
 
         int imgStep = 3;
@@ -713,9 +321,14 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
         tree.updateNode(octomap::point3d(p.x, p.y, p.z), true);
     }
     tree.updateInnerOccupancy();
-    boost::filesystem::path path{"./Results"};
-    boost::filesystem::create_directories(path);
-    tree.write("./Results/octomap_office.ot");
+    boost::filesystem::path parentPath(msDepthImagesPath);
+    parentPath = parentPath.parent_path();
+    boost::filesystem::path resultPath("Results");
+    resultPath = parentPath / resultPath;
+    boost::filesystem::create_directories(resultPath);
+    boost::filesystem::path octoMapPath("octomap_office.ot");
+    octoMapPath = resultPath / octoMapPath;
+    tree.write(octoMapPath.string());
     return;
 }
 
@@ -983,5 +596,517 @@ void MapDrawer::CloseOctoMapThread()
         mpThreadOctomap->join();
     }
     mpThreadOctomap.reset();
+}
+bool MapDrawer::SimpleRRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
+                                    std::vector<std::vector<int> > &mObstacles,
+                                    int nMiddleX, int nMiddleY, int ncStepSize)
+{
+    int nDisMin = std::numeric_limits<int>::max();
+    int nConnect = 1;
+
+    std::shared_ptr<RRTNode> pMin = std::make_shared<RRTNode> (std::vector<int> (2, nDisMin));
+    for (vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
+        std::vector<int> vTmpPoint = (*sit)->mPoint;
+        int nTmpDist = abs(nMiddleX - vTmpPoint[0]) + abs(nMiddleY - vTmpPoint[1]);
+        if (nTmpDist < nDisMin) {
+            nDisMin = nTmpDist;
+            pMin = *sit;
+        }
+    }
+
+    if (nDisMin < 4)
+        return false;//means too close
+
+    int nStepX = pMin->mPoint[0] > nMiddleX ? (-1) : 1;
+    int nStepY = pMin->mPoint[1] > nMiddleY ? (-1) : 1;// different step along different direction
+
+    //use sin,cos to determine direction
+    float fRadius = sqrt(pow(float(pMin->mPoint[0] - nMiddleX), 2.0) + pow(float(pMin->mPoint[1] - nMiddleY), 2.0));
+    int nStepSizeX = int(float(ncStepSize * abs(pMin->mPoint[0] - nMiddleX)) / fRadius) + 1;// sin
+    int nStepSizeY = int(float(ncStepSize * abs(pMin->mPoint[1] - nMiddleY)) / fRadius) + 1;// cos
+
+    for (int i = pMin->mPoint[0]; abs(i - pMin->mPoint[0]) < nStepSizeX; i += nStepX) {
+        int OUT = 0;
+        for (int j = pMin->mPoint[1]; abs(j - pMin->mPoint[1]) < nStepSizeY; j += nStepY) {
+            if (i < 0 || i >= mObstacles[0].size() ||
+                j < 0 || j >= mObstacles.size() ||
+                mObstacles[j][i] == 1)//found obstacle or out of bounds
+            {
+                nConnect = 0;// not directly connect
+                OUT = 1;
+                break;
+            }
+        }
+        if (OUT == 1)
+            break;
+    }
+
+    if (nConnect == 1) {// add
+//            nStepX = pMinStart->mPoint[0] > nMiddleX ? (-1) : 1;
+//            nStepY = pMinStart->mPoint[1] > nMiddleY ? (-1) : 1;
+
+        int x = nStepX * nStepSizeX + pMin->mPoint[0];
+        int y = nStepY * nStepSizeY + pMin->mPoint[1];
+        std::vector<int> vTmpPoint = {x, y};
+        std::shared_ptr<RRTNode> tmpNode = std::make_shared<RRTNode> (vTmpPoint);
+        tmpNode->addParent(pMin);
+        tree.push_back(tmpNode);
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+bool MapDrawer::SimpleRRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
+                                        std::vector<std::shared_ptr<RRTNode> > &treePop,
+                                        std::vector<std::vector<int> > &mObstacles,
+                                        std::vector<std::shared_ptr<RRTNode> > &vSolution,
+                                        int ncStepSize)
+{
+    //check whether new node near the other tree, first check near target tree
+    bool bConnect = false;
+    for (std::vector<std::shared_ptr<RRTNode> >::iterator sit = tree.begin(); sit != tree.end(); sit++) {
+        int y = (*sit)->mPoint[1];
+        int x = (*sit)->mPoint[0];
+        if (abs(treePop.back()->mPoint[0] - x) + abs(treePop.back()->mPoint[1]  - y) <= 2 * ncStepSize) {
+            int nOut = 0;
+            for (int i = min(treePop.back()->mPoint[0], x); i <= max(treePop.back()->mPoint[0], x); i++) {
+
+                for (int j = min(treePop.back()->mPoint[1], y); j <= max(treePop.back()->mPoint[1], y); j++) {
+                    if (mObstacles[j][i] == 1) {
+                        nOut = 1;
+                        bConnect = false;
+                        break;
+                    }
+                }
+                if (nOut == 1)
+                    break;
+            }
+            if (!nOut)//connect
+            {
+                bConnect = true;//connect to start tree
+                vSolution.clear();
+                vSolution.push_back(treePop.back());
+                while(vSolution.back()->mParent)
+                {
+                    vSolution.push_back(vSolution.back()->mParent);
+                }
+                std::reverse(vSolution.begin(), vSolution.end());
+                vSolution.push_back(*sit);
+                while(vSolution.back()->mParent)
+                {
+                    vSolution.push_back(vSolution.back()->mParent);
+                }
+                break;
+            }
+        }
+    }
+    return bConnect;
+}
+void MapDrawer::SimplePathPlanning(std::vector<float> &start, std::vector<float> &target,
+                                   std::vector<std::vector<float> > &solution,
+                                   std::vector<std::vector<int> > &mObstacles)
+{
+
+    if (start.size() != 2 || target.size() != 2)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    mvBounds[0] = std::numeric_limits<float>::max();
+    mvBounds[1] = std::numeric_limits<float>::min();
+    mvBounds[2] = std::numeric_limits<float>::max();
+    mvBounds[3] = std::numeric_limits<float>::min();
+    for (auto p: mCloud->points)
+    {
+        if (p.x < mvBounds[0])
+        {
+            mvBounds[0] = p.x;
+        }
+        if (p.x > mvBounds[1])
+        {
+            mvBounds[1] = p.x;
+        }
+        if (p.z < mvBounds[2])
+        {
+            mvBounds[2] = p.z;
+        }
+        if (p.z > mvBounds[3])
+        {
+            mvBounds[3] = p.z;
+        }
+    }
+    const int nMaxIter = 10000;
+    const int ncSizeX = static_cast<int> ((mvBounds[1] - mvBounds[0] + 0.2) / mfcLeafSize);
+    const int ncSizeY = static_cast<int> ((mvBounds[3] - mvBounds[2] + 0.2) / mfcLeafSize);
+    const float fcObstacleWidth = 9;//these three should choose properly. ncSizeMax*mfcLeafSize is the range of the enviroment.
+    //LeafSIze * fcObstacleWidth is the width of the obstacles that extend, equal to half of the robot width
+    //37.5cm--->15 is the whole body, 22.5cm-->9 is the test body
+    mObstacles.clear();
+    mObstacles = std::vector<std::vector<int> > (ncSizeY, std::vector<int> (ncSizeX, 0));
+    // origin is (ncSizeMax,ncSizeMax), minimal leaf is mfcLeafSize,
+    // so the range is [-ncSizeMax * mfcLeafSize,ncSizeMax * mfcLeafSize]*
+    // [-ncSizeMax * mfcLeafSize,ncSizeMax * mfcLeafSize]
+    std::vector<int> nStart(2, 0);
+    std::vector<int> nTarget(2, 0);
+    nStart[0] = static_cast<int> ((start[0] - mvBounds[0]) / mfcLeafSize);
+    nStart[1] = static_cast<int> ((start[1] - mvBounds[2]) / mfcLeafSize);
+    nTarget[0] = static_cast<int> ((target[0] - mvBounds[0]) / mfcLeafSize);
+    nTarget[1] = static_cast<int> ((target[1] - mvBounds[2]) / mfcLeafSize);
+    if (nStart[0] < 0 || nStart[0] >= ncSizeX ||
+        nStart[1] < 0 || nStart[1] >= ncSizeY ||
+        nTarget[0] < 0 || nTarget[0] >= ncSizeX ||
+        nTarget[1] < 0 || nTarget[1] >= ncSizeY)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors out of bounds"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+//    std::transform(start.begin(), start.end(), nStart.begin(),
+//                   [mfcLeafSize, ncSizeMax](float d) -> int{return
+//                       (static_cast<int> (d / mfcLeafSize) + ncSizeMax);});
+//    std::transform(target.begin(), target.end(), nTarget.begin(),
+//                   [mfcLeafSize, ncSizeMax](float d) -> int{return
+//                       (static_cast<int> (d / mfcLeafSize) + ncSizeMax);});
+
+    for (auto p : mCloud->points) {
+        int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
+        int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
+        for (int i = nTmpX - fcObstacleWidth; i < nTmpX + fcObstacleWidth; i++)
+        {
+            for (int j = nTmpY - fcObstacleWidth; j < nTmpY + fcObstacleWidth; j++)
+            {
+                if (i >= 0 && i < ncSizeX && j >= 0 && j < ncSizeY)
+                {
+                    mObstacles[j][i] = 1;
+                }
+
+            }
+        }
+    }
+    GetClosestFreePoint(nStart, mObstacles, 40);
+    GetClosestFreePoint(nTarget, mObstacles, 40);
+
+    std::vector<std::shared_ptr<RRTNode> > vStartTree;
+    std::vector<std::shared_ptr<RRTNode> > vTargetTree;
+
+    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
+    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
+    int nCount = 0;
+    int ncStepSize = 6; //pixel
+
+    std::vector<std::shared_ptr<RRTNode> > vSolution;
+    srand (time(NULL));
+    bool bFoundPath = false;
+    while (nCount < nMaxIter)  //max iteration
+    {
+        nCount++;
+        int nMiddleX = rand() % ncSizeX;
+        int nMiddleY = rand() % ncSizeY;
+
+        int innerMaxIter = 50;
+        for (int iter = 0; iter < innerMaxIter; iter++)
+        {
+            if (mObstacles[nMiddleY][nMiddleX] == 0)
+            {
+                break;
+            }
+            nMiddleX = rand() % ncSizeX;
+            nMiddleY = rand() % ncSizeY;
+            if (iter >= innerMaxIter - 1)
+            {
+                std::cout << "\x1B[31m" << "ERROR: cannot generate a collision-free random point"
+                          << "\x1B[0m" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        if (!SimpleRRTTreeExpand(vStartTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
+        {
+            continue;
+        };
+        if (!SimpleRRTTreeExpand(vTargetTree, mObstacles, nMiddleX, nMiddleY, ncStepSize))
+        {
+            continue;
+        };
+
+        if (!SimpleRRTTreesIntersect(vTargetTree, vStartTree, mObstacles, vSolution, ncStepSize))
+        {
+            if (!SimpleRRTTreesIntersect(vStartTree, vTargetTree, mObstacles, vSolution, ncStepSize))
+            {
+                continue;
+            }
+        }
+
+        bFoundPath = true;
+        //the order in Solution is the path, now smooth
+        int nSpan = 2; //follow rrt
+        while (nSpan < vSolution.size()) {
+            bool bChanged = false;
+            for (int i = 0; i + nSpan < vSolution.size(); i++) {
+                bool bCanErase = true;// true to erase
+                int yy = vSolution[i]->mPoint[1];
+                int xx = vSolution[i]->mPoint[0];
+                int yyy = vSolution[i + nSpan]->mPoint[1];
+                int xxx = vSolution[i + nSpan]->mPoint[0];
+
+                for (int ii = min(xx, xxx); ii <= max(xx, xxx); ii++) {
+                    for (int jj = min(yy, yyy); jj <= max(yy, yyy); jj++) {
+                        if (mObstacles[jj][ii] == 1) {
+                            bCanErase = false;
+                            break;
+                        }
+                    }
+                    if (!bCanErase)
+                        break;
+                }
+
+
+                if (bCanErase) {
+                    for (int x = 1; x < nSpan; x++) {
+                        vSolution.erase(vSolution.begin() + i + 1);
+                    }
+                    bChanged = true;
+                }
+            }
+
+            if (!bChanged) nSpan++;
+        }
+
+        solution.clear();
+        for (std::vector<std::shared_ptr<RRTNode> >::iterator st = vSolution.begin(); st != vSolution.end(); st++) //in right order
+        {
+            float yy = (*st)->mPoint[1] * mfcLeafSize + mvBounds[2];
+            float xx = (*st)->mPoint[0] * mfcLeafSize + mvBounds[0];
+            std::vector<float> point = {xx, yy};
+            solution.push_back(point);
+        }
+        break;
+    }
+
+//    glPointSize(2);
+//    glBegin(GL_POINTS);
+//    glColor3f(1.0,0.0,0.5);
+//    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vStartTree.begin();st!=vStartTree.end();st++) {
+//
+//        int yy = (*st)->mPoint[1];
+//        int xx = (*st)->mPoint[0];
+//        glVertex3f(xx * mfcLeafSize + mvBounds[0], 5.0, yy * mfcLeafSize + mvBounds[2]);
+//    }
+//    glEnd();
+//
+//
+//    glPointSize(2);
+//    glBegin(GL_POINTS);
+//    glColor3f(0.25,0.21,0.16);
+//    for(std::vector<std::shared_ptr<RRTNode> >::iterator st=vTargetTree.begin();st!=vTargetTree.end();st++) {
+//
+//        int yy = (*st)->mPoint[1];
+//        int xx = (*st)->mPoint[0];
+//        glVertex3f(xx * mfcLeafSize + mvBounds[0], 5.0, yy * mfcLeafSize + mvBounds[2]);
+//    }
+//
+//    glEnd();
+    if (bFoundPath)
+    {
+        std::cout << "Find a path after " << nCount << " iterations ..." << std::endl;
+    }
+    else
+    {
+        std::cout << "Cannot find a path after " << nMaxIter << " iterations ..." << std::endl;
+    }
+
+}
+
+void MapDrawer::GetClosestFreePoint(std::vector<int> &output, std::vector<std::vector<int> > &obstacles, int searchWidth)
+{
+    if (obstacles[output[1]][output[0]] == 1)
+    {
+        int nSearchWidth = 40;
+        std::vector<int> tmpOutput(2, 0);
+        int minDistance = std::numeric_limits<int>::max();
+        for (int i = -nSearchWidth; i < nSearchWidth; i++)
+        {
+            for (int j = -nSearchWidth; j < nSearchWidth; j++)
+            {
+                int y = output[1] + i;
+                int x = output[0] + j;
+                if (y >= 0 && y < obstacles.size() && x >= 0 && x < obstacles[0].size())
+                {
+                    if (obstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
+                    {
+                        minDistance = abs(i) + abs(j);
+                        tmpOutput[0] = x;
+                        tmpOutput[1] = y;
+                    }
+
+                }
+            }
+        }
+        output = tmpOutput;
+    }
+}
+void MapDrawer::RandomlyGetObjPose(std::string object,
+                                   std::vector<float> &output,
+                                   std::unordered_map<std::string,
+                                                      std::unordered_map<long unsigned int, ObjectPos> > &objectMap)
+{
+    output.resize(2);
+    std::vector<std::vector<double> > poses;
+    int maxTrials = 100;
+    int count = 0;
+    std::unordered_map<long unsigned int, ObjectPos>::iterator randomIt;
+    do
+    {
+        randomIt = std::next(std::begin(objectMap[object]), rand() % objectMap[object].size());
+        poses = (*randomIt).second.Pcs;
+        count++;
+        if (count >= maxTrials)
+        {
+            std::cout << "Cannot find object [" << object << "]" << std::endl;
+            return;
+        }
+    }while(poses.size() <= 0);
+    std::vector<double> dSelectedObj(3, 0.0);
+    count = 0;
+    do{
+        int randInt = rand() % poses.size();
+        dSelectedObj = poses[randInt];
+        count++;
+        if (count >= maxTrials)
+        {
+            std::cout << "Cannot find object [" << object << "]" << std::endl;
+            return;
+        }
+    }while(dSelectedObj[0] == 0.0 && dSelectedObj[1] == 0.0 && dSelectedObj[2] == 0.0);
+
+    std::vector<float> fSelectedObj(dSelectedObj.begin(), dSelectedObj.end());
+    cv::Mat Twc;
+    cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << fSelectedObj[0], fSelectedObj[1], fSelectedObj[2], 1.0);
+    vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
+    bool KeyFrameFound = false;
+    for (vector<std::shared_ptr<KeyFrame> >::iterator it = vpKFs.begin(); it != vpKFs.end(); it++)
+    {
+        if ((*it)->mnId == (*randomIt).first)
+        {
+            KeyFrameFound = true;
+            Twc = (*it)->GetPoseInverse();
+        }
+    }
+    if (!KeyFrameFound)
+    {
+        std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
+        return;
+    }
+    cv::Mat x3Dw = Twc * x3Dc;
+    output[0] = x3Dw.at<float>(0, 0);
+    output[1] = x3Dw.at<float>(2, 0);
+}
+
+void MapDrawer::OmplPathPlanning(std::vector<float> &start, std::vector<float> &target,
+                                 std::vector<std::vector<float> > &solution,
+                                 std::vector<std::vector<int> > &mObstacles)
+{
+    if (start.size() != 2 || target.size() != 2)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    mvBounds[0] = std::numeric_limits<float>::max();
+    mvBounds[1] = std::numeric_limits<float>::min();
+    mvBounds[2] = std::numeric_limits<float>::max();
+    mvBounds[3] = std::numeric_limits<float>::min();
+    for (auto p: mCloud->points)
+    {
+        if (p.x < mvBounds[0])
+        {
+            mvBounds[0] = p.x;
+        }
+        if (p.x > mvBounds[1])
+        {
+            mvBounds[1] = p.x;
+        }
+        if (p.z < mvBounds[2])
+        {
+            mvBounds[2] = p.z;
+        }
+        if (p.z > mvBounds[3])
+        {
+            mvBounds[3] = p.z;
+        }
+    }
+    const float mfcLeafSize = 0.025;
+    const int ncSizeX = static_cast<int> ((mvBounds[1] - mvBounds[0] + 0.2) / mfcLeafSize);
+    const int ncSizeY = static_cast<int> ((mvBounds[3] - mvBounds[2] + 0.2) / mfcLeafSize);
+    const float fcObstacleWidth = 9;
+    mObstacles.clear();
+    mObstacles = std::vector<std::vector<int> > (ncSizeY, std::vector<int> (ncSizeX, 0));
+    std::vector<int> nStart(2, 0);
+    std::vector<int> nTarget(2, 0);
+    nStart[0] = static_cast<int> ((start[0] - mvBounds[0]) / mfcLeafSize);
+    nStart[1] = static_cast<int> ((start[1] - mvBounds[2]) / mfcLeafSize);
+    nTarget[0] = static_cast<int> ((target[0] - mvBounds[0]) / mfcLeafSize);
+    nTarget[1] = static_cast<int> ((target[1] - mvBounds[2]) / mfcLeafSize);
+    if (nStart[0] < 0 || nStart[0] >= ncSizeX ||
+        nStart[1] < 0 || nStart[1] >= ncSizeY ||
+        nTarget[0] < 0 || nTarget[0] >= ncSizeX ||
+        nTarget[1] < 0 || nTarget[1] >= ncSizeY)
+    {
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors out of bounds"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    for (auto p : mCloud->points) {
+        int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
+        int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
+        for (int i = nTmpX - fcObstacleWidth; i < nTmpX + fcObstacleWidth; i++)
+        {
+            for (int j = nTmpY - fcObstacleWidth; j < nTmpY + fcObstacleWidth; j++)
+            {
+                if (i >= 0 && i < ncSizeX && j >= 0 && j < ncSizeY)
+                {
+                    mObstacles[j][i] = 1;
+                }
+
+            }
+        }
+    }
+    GetClosestFreePoint(nStart, mObstacles, 40);
+    GetClosestFreePoint(nTarget, mObstacles, 40);
+
+    Plane2DEnvironment env(mObstacles, msPlanner);
+    if (env.Plan(nStart, nTarget))
+    {
+        std::vector<std::vector<int> > vSolution;
+        env.GetSolution(vSolution);
+        if (vSolution.size() <= 0)
+        {
+            std::cout << "Cannot find a path ... " << std::endl;
+        }
+        else
+        {
+            std::cout << "Find a path ..." << std::endl;
+            solution.clear();
+            for (std::vector<std::vector<int> >::iterator st = vSolution.begin(); st != vSolution.end(); st++) //in right order
+            {
+                float yy = (*st)[1] * mfcLeafSize + mvBounds[2];
+                float xx = (*st)[0] * mfcLeafSize + mvBounds[0];
+                std::vector<float> point = {xx, yy};
+                solution.push_back(point);
+            }
+
+        }
+    }
+    else
+    {
+        std::cout << "Cannot find a path ... " << std::endl;
+    }
 }
 } //namespace ORB_SLAM

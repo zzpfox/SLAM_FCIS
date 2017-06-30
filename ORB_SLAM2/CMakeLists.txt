@@ -40,7 +40,7 @@ find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(PCL 1.8 REQUIRED)
 find_package(octomap REQUIRED)
-
+find_package(OMPL QUIET)
 include_directories(
         ${PROJECT_SOURCE_DIR}
         ${PROJECT_SOURCE_DIR}/include
@@ -49,6 +49,7 @@ include_directories(
         ${OCTOMAP_INCLUDE_DIRS}
         ${PCL_INCLUDE_DIRS}
         ${OpenCV_INCLUDE_DIRS}
+        ${OMPL_INCLUDE_DIRS}
 )
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
@@ -75,7 +76,8 @@ add_library(${PROJECT_NAME} SHARED
         src/Initializer.cc
         src/Viewer.cc
         src/Communication.cc
-        src/Serialization.cc)
+        src/Serialization.cc
+        src/OmplPathPlanning.cpp)
 
 target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBS}
@@ -85,6 +87,9 @@ target_link_libraries(${PROJECT_NAME}
         ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
         ${PCL_LIBRARIES}
         ${OCTOMAP_LIBRARIES}
+        ${OMPL_LIBRARIES}
+        ${OMPLAPP_LIBRARIES}
+        ompl
         )
 
 # Build examples

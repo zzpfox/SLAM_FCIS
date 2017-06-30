@@ -30,14 +30,20 @@
 #include <mutex>
 #include <thread>
 #include <memory>
+
+
 namespace ORB_SLAM2
 {
 
 struct RRTNode
 {
-    RRTNode(const std::vector<int> &point): mPoint(point){};
-    RRTNode(const std::vector<int> &point, std::shared_ptr<RRTNode> parent):
-        mPoint(point), mParent(parent){};
+    RRTNode(const std::vector<int> &point)
+        : mPoint(point)
+    {};
+    RRTNode(const std::vector<int> &point, std::shared_ptr<RRTNode> parent)
+        :
+        mPoint(point), mParent(parent)
+    {};
     void addParent(std::shared_ptr<RRTNode> parent)
     {
         mParent = parent;
@@ -46,12 +52,15 @@ struct RRTNode
     std::shared_ptr<RRTNode> mParent;
 };
 
+
 class MapDrawer
 {
 public:
     MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath);
-
+    std::string msPlanner;
     std::shared_ptr<Map> mpMap;
+    const float mfcLeafSize;
+    std::vector<float> mvBounds;
     bool mbCalPointCloud;
     bool mbFindObjCalPoints;
     std::vector<float> mvStart;
@@ -59,17 +68,34 @@ public:
     std::unique_ptr<std::thread> mpThreadOctomap;
     static std::string msDepthImagesPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+    std::vector<std::vector<float> > mSolution;
+    std::vector<std::vector<int> > mObstacles;
 
-    void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs, pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+    void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             int begin, int step);
 
     void FindObjects();
 
+    void RandomlyGetObjPose(std::string object,
+                            std::vector<float> &output,
+                            std::unordered_map<std::string,
+                                               std::unordered_map<long unsigned int, ObjectPos> > &ObjectMap);
+
     void CalPointCloud();
 
-    void PathPlanning(std::vector<float> &start, std::vector<float> &target);
+    void OmplPathPlanning(std::vector<float> &start,
+                          std::vector<float> &target,
+                          std::vector<std::vector<float> > &solution,
+                          std::vector<std::vector<int> > &mObstacles);
 
-    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output);
+    void SimplePathPlanning(std::vector<float> &start,
+                            std::vector<float> &target,
+                            std::vector<std::vector<float> > &solution,
+                            std::vector<std::vector<int> > &mObstacles);
+
+    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                          pcl::PointCloud<pcl::PointXYZ>::Ptr output);
 
     void clear();
 
@@ -79,15 +105,19 @@ public:
 
     void DrawMapPoints();
 
-    bool RRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
-                       std::vector<std::vector<int> > &mObstacles,
-                       int nMiddleX, int nMiddleY, int ncStepSize);
+    void GetClosestFreePoint(std::vector<int> &output,
+                             std::vector<std::vector<int> > &obstacles,
+                             int searchWidth);
 
-    bool RRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
-                           std::vector<std::shared_ptr<RRTNode> > &treePop,
-                           std::vector<std::vector<int> > &mObstacles,
-                           std::vector<std::shared_ptr<RRTNode> > &vSolution,
-                           int ncStepSize);
+    bool SimpleRRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
+                             std::vector<std::vector<int> > &mObstacles,
+                             int nMiddleX, int nMiddleY, int ncStepSize);
+
+    bool SimpleRRTTreesIntersect(std::vector<std::shared_ptr<RRTNode> > &tree,
+                                 std::vector<std::shared_ptr<RRTNode> > &treePop,
+                                 std::vector<std::vector<int> > &mObstacles,
+                                 std::vector<std::shared_ptr<RRTNode> > &vSolution,
+                                 int ncStepSize);
 
     void DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph);
 
