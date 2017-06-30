@@ -4,6 +4,7 @@
 #include <ompl/geometric/planners/rrt/RRTConnect.h>
 #include <ompl/geometric/planners/sbl/SBL.h>
 #include <ompl/geometric/planners/sbl/pSBL.h>
+#include <ompl/geometric/planners/rrt/RRTsharp.h>
 #include <ompl/geometric/planners/rrt/TRRT.h>
 #include <ompl/geometric/planners/rrt/pRRT.h>
 #include <ompl/geometric/planners/fmt/FMT.h>
@@ -40,6 +41,11 @@ Plane2DEnvironment::Plane2DEnvironment(const std::vector<std::vector<int> > &obs
     else if (planner == "RRTstar")
     {
         std::shared_ptr<og::RRTstar> newPlanner = std::make_shared<og::RRTstar>(si);
+        ss_->setPlanner(newPlanner);
+    }
+    else if (planner == "RRTsharp")
+    {
+        std::shared_ptr<og::RRTsharp> newPlanner = std::make_shared<og::RRTsharp>(si);
         ss_->setPlanner(newPlanner);
     }
     else if (planner == "TRRT")
