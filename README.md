@@ -29,3 +29,4 @@ And `Show SegObjects` will show the objects' type and their corresponding positi
 * ORB-SLAM2 now support boost serialization over MapPoints, KeyFrames, Map. So the whole program can be saved and loaded again.
 If we reuse the map previously stored, the program will load in the map and enter the `Localization Mode` in the first place. After the camera has been successfully relocalized, you can manually turn off the `Localization Mode`.
 * Add naive version of RRT motion planning algorithm
+* Add OMPL motion planning library
