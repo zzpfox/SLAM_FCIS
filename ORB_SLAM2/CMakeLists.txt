@@ -77,7 +77,8 @@ add_library(${PROJECT_NAME} SHARED
         src/Viewer.cc
         src/Communication.cc
         src/Serialization.cc
-        src/OmplPathPlanning.cpp)
+        src/OmplPathPlanning.cc
+        src/PathPlanning.cc)
 
 target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBS}

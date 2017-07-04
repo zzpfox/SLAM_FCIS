@@ -30,46 +30,25 @@
 #include <mutex>
 #include <thread>
 #include <memory>
-
+#include "PathPlanning.h"
 
 namespace ORB_SLAM2
 {
-
-struct RRTNode
-{
-    RRTNode(const std::vector<int> &point)
-        : mPoint(point)
-    {};
-    RRTNode(const std::vector<int> &point, std::shared_ptr<RRTNode> parent)
-        :
-        mPoint(point), mParent(parent)
-    {};
-    void addParent(std::shared_ptr<RRTNode> parent)
-    {
-        mParent = parent;
-    }
-    std::vector<int> mPoint;
-    std::shared_ptr<RRTNode> mParent;
-};
-
 
 class MapDrawer
 {
 public:
     MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath);
-    std::string msPlanner;
+
     std::shared_ptr<Map> mpMap;
-    const float mfcLeafSize;
-    std::vector<float> mvBounds;
+
     bool mbCalPointCloud;
     bool mbFindObjCalPoints;
-    std::vector<float> mvStart;
-    std::vector<float> mvTarget;
     std::unique_ptr<std::thread> mpThreadOctomap;
     static std::string msPointCloudPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
-    std::vector<std::vector<float> > mSolution;
-    std::vector<std::vector<int> > mObstacles;
+    std::shared_ptr<PathPlanning2D> mPathPlanning;
+
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
