@@ -20,11 +20,16 @@
 
 #include "KeyFrame.h"
 #include "Converter.h"
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 #include "ORBmatcher.h"
+#include "Serialization.h"
 #include<mutex>
 #include <sstream>
 #include <iomanip>
 #include <stdio.h>
+#include <chrono>
+#include <ctime>
 namespace ORB_SLAM2
 {
 
@@ -86,11 +91,39 @@ KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame
     {
         throw std::string("Map died!!!");
     }
-    F.mImDepth.convertTo(imDepth, CV_16U, 1.0 / mpMap.lock()->mDepthMapFactor);
+    std::shared_ptr<Map> smpMap = mpMap.lock();
+//    F.mImDepth.convertTo(imDepth, CV_16U, 1.0 / mpMap.lock()->mDepthMapFactor);
     std::stringstream ss;
-    ss << msDepthImagesFolder << "/KeyFrame-" << std::setw(8) << std::setfill('0') << mnId << ".png";
-    mDepthImageName = ss.str();
-    cv::imwrite(mDepthImageName.c_str(), imDepth);
+    ss << msDepthImagesFolder << "/KeyFrame-" << std::setw(8) << std::setfill('0') << mnId << ".bin";
+    mPointCloudName = ss.str();
+//    cv::imwrite(mDepthImageName.c_str(), imDepth);
+
+    std::vector<pcl::PointXYZ, Eigen::aligned_allocator<pcl::PointXYZ> > points;
+    pcl::PointXYZ point;
+    int imgStep = 3;
+    for (int r = 0; r < F.mImDepth.rows; r += imgStep) {
+        const float *itD = F.mImDepth.ptr<float>(r);
+        const float y = smpMap->mLookupY.at<float>(0, r);
+        const float *itX = smpMap->mLookupX.ptr<float>();
+        for (size_t c = 0; c < (size_t) F.mImDepth.cols; c += imgStep, itD += imgStep, itX += imgStep) {
+            float depthValue = *itD;
+            if (depthValue > 0.1 && depthValue < 12.0) {
+                float zc = depthValue;
+                float xc = *itX * depthValue;
+                float yc = y * depthValue;
+                point.x = xc;
+                point.y = yc;
+                point.z = zc;
+                points.push_back(point);
+            }
+        }
+    }
+
+    std::ofstream os(mPointCloudName);
+    {
+        boost::archive::binary_oarchive oa(os, boost::archive::no_header);
+        oa << points;
+    }
 
 }
 
@@ -723,11 +756,7 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
 
 void KeyFrame::DeleteDepthImage()
 {
-    remove(mDepthImageName.c_str());
-//    if (remove(mDepthImageName.c_str()) != 0)
-//        std::cout << "Error deleting file: " << mDepthImageName << std::endl;
-//    else
-//        std::cout << "File successfully deleted: " << mDepthImageName << std::endl;
+    remove(mPointCloudName.c_str());
 }
 
 void KeyFrame::SetVocabulary(std::shared_ptr<ORBVocabulary> pVocabulary)

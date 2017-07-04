@@ -23,6 +23,10 @@ namespace cv
 class Mat;
 class KeyPoint;
 }
+namespace pcl
+{
+class PointXYZ;
+}
 
 namespace boost
 {
@@ -41,6 +45,10 @@ void serialize(Archive &ar, ::cv::Mat &m, const unsigned int file_version);
 template<typename Archive>
 void serialize(Archive &ar, ::cv::KeyPoint &p, const unsigned int file_version);
 
+
+template<typename Archive>
+void serialize(Archive &ar, ::pcl::PointXYZ &m, const unsigned int file_version);
+
 template<typename Archive>
 void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int file_version);
 
@@ -53,6 +61,7 @@ void serialize(Archive &ar, ::ORB_SLAM2::Map &map, const unsigned int file_versi
 template<typename Archive>
 void serialize(Archive &ar, ::ORB_SLAM2::ObjectPos &objectpos, const unsigned int file_version);
 }
+
 }
 
 

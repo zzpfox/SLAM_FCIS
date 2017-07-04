@@ -2,7 +2,8 @@
 #include "KeyFrame.h"
 #include "MapPoint.h"
 #include "Map.h"
-
+#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 
 namespace boost
 {
@@ -64,6 +65,14 @@ void serialize(Archive &ar, ::cv::KeyPoint &p, const unsigned int file_version)
     ar & p.class_id;
 }
 
+template<typename Archive>
+void serialize(Archive &ar, ::pcl::PointXYZ &m, const unsigned int file_version)
+{
+    ar & m.x;
+    ar & m.y;
+    ar & m.z;
+}
+
 
 template<typename Archive>
 void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int file_version)
@@ -91,7 +100,7 @@ void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int 
     ar & const_cast<std::vector<float> & > (keyframe.mvDepth);
     ar & const_cast<cv::Mat &> (keyframe.mDescriptors);
     ar & keyframe.mTcp;
-    ar & keyframe.mDepthImageName;
+    ar & keyframe.mPointCloudName;
     ar & keyframe.Tcw;
     ar & keyframe.Twc;
     ar & keyframe.Ow;
@@ -176,6 +185,9 @@ template void serialize<BoostBinIar>(BoostBinIar &, ::cv::Mat &, const unsigned 
 
 template void serialize<BoostBinOar>(BoostBinOar &, ::cv::KeyPoint &, const unsigned int);
 template void serialize<BoostBinIar>(BoostBinIar &, ::cv::KeyPoint &, const unsigned int);
+
+template void serialize<BoostBinOar>(BoostBinOar &, ::pcl::PointXYZ &, const unsigned int);
+template void serialize<BoostBinIar>(BoostBinIar &, ::pcl::PointXYZ &, const unsigned int);
 
 template void serialize<BoostBinOar>(BoostBinOar &, ::ORB_SLAM2::KeyFrame &, const unsigned int);
 template void serialize<BoostBinIar>(BoostBinIar &, ::ORB_SLAM2::KeyFrame &, const unsigned int);

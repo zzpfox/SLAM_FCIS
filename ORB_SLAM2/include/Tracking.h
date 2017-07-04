@@ -119,7 +119,7 @@ public:
     // Input sensor
     int mSensor;
     std::string msDataFolder;
-    std::string msDepthImagesFolder;
+    std::string msPointCloudFolder;
     // Current Frame
     Frame mCurrentFrame;
     cv::Mat mImGray;

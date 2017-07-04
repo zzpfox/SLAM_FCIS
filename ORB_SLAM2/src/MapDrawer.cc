@@ -37,11 +37,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include "OmplPathPlanning.h"
-
+#include <opencv2/core/eigen.hpp>
 
 namespace ORB_SLAM2
 {
-std::string MapDrawer::msDepthImagesPath = "./Data/DepthImages";
+std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
       mCloud(new pcl::PointCloud<pcl::PointXYZ>),
@@ -84,7 +84,7 @@ void MapDrawer::DrawPointCloud()
 
 void MapDrawer::CalPointCloud()
 {
-    std::chrono::time_point<std::chrono::system_clock> start;
+    std::chrono::time_point<std::chrono::system_clock> start, start2;
     std::chrono::time_point<std::chrono::system_clock> end;
     start = std::chrono::system_clock::now();
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
@@ -96,18 +96,28 @@ void MapDrawer::CalPointCloud()
     for (int j = 0; j < kFNum; j += sampleFrequency) {
         sampledVPKFs.push_back(vpKFs[j]);
     }
-    int numThreads = 6;
+    int numThreads = 4;
     std::thread threads[numThreads];
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds;
+    for (int i = 0; i < numThreads; i++)
+    {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZ>());
+        clouds.push_back(tmp);
+    }
     for (int i = 0; i < numThreads; i++) {
-        threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), cloud, i,
-                                 numThreads);
+        threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), clouds[i], i,
+                                 numThreads, 0.55, -0.55);
     }
     for (auto &th : threads) {
         th.join();
     }
+    for (int i = 0; i < numThreads; i++)
+    {
+        (*cloud) += *(clouds[i]);
+    }
     {
         unique_lock<mutex> lock(mMutexMCloud);
-        if (cloud->points.size() > 0)
+        if (clouds[0]->points.size() > 0)
             FilterPointCloud(cloud, mCloud);
 //            mCloud = cloud;
     }
@@ -255,53 +265,105 @@ void MapDrawer::FindObjects()
 void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                                    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                    int begin,
-                                   int step)
+                                   int step,
+                                   float heightUpperBound,
+                                   float heightLowerBound)
 {
-    pcl::PointXYZ point;
+
     int keyFrameNum = vpKFs.size();
+
     for (int i = begin; i < keyFrameNum; i += step) {
         std::shared_ptr<KeyFrame> pKF = vpKFs[i];
-
         std::stringstream ss;
-        ss << msDepthImagesPath << "/KeyFrame-" << std::setw(8) << std::setfill('0') << pKF->mnId << ".png";
-        std::string depthImageName = ss.str();
-
-        cv::Mat depth = cv::imread(depthImageName.c_str(), cv::IMREAD_UNCHANGED);
-        if (depth.empty())
+        ss << msPointCloudPath << "/KeyFrame-" << std::setw(8) << std::setfill('0') << pKF->mnId << ".bin";
+        std::string pointCloudName = ss.str();
+        std::vector<pcl::PointXYZ, Eigen::aligned_allocator<pcl::PointXYZ> > points;
+        std::ifstream is(pointCloudName);
+        if (is)
+        {
+            boost::archive::binary_iarchive ia(is, boost::archive::no_header);
+            ia >> points;
+        }
+        else
         {
             continue;
         }
-        depth.convertTo(depth, CV_32F, mpMap->mDepthMapFactor);
+        for (int j = 0; j < points.size(); j++)
+        {
+            float xx, yy, zz;
+            pcl::PointXYZ tmpPoint = points[j];
 
-        int imgStep = 3;
-        for (int r = 0; r < depth.rows; r += imgStep) {
-            const float *itD = depth.ptr<float>(r);
-            const float y = mpMap->mLookupY.at<float>(0, r);
-            const float *itX = mpMap->mLookupX.ptr<float>();
-            for (size_t c = 0; c < (size_t) depth.cols; c += imgStep, itD += imgStep, itX += imgStep) {
-                float depthValue = *itD;
-                float xx, yy, zz;
-                if (depthValue > 0.1 && depthValue < 12.0) {
-                    float zc = depthValue;
-                    float xc = *itX * depthValue;
-                    float yc = y * depthValue;
-                    cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << xc, yc, zc, 1);
-                    cv::Mat x3Dw = pKF->GetPoseInverse() * x3Dc;
-                    xx = x3Dw.at<float>(0, 0);
-                    yy = x3Dw.at<float>(1, 0);
-                    zz = x3Dw.at<float>(2, 0);
-                    if (abs(yy) < 0.55) {
-                        point.x = xx;
-                        point.y = yy;
-                        point.z = zz;
-                        unique_lock<mutex> lock(mMutexCloud);
-                        cloud->points.push_back(point);
-                    }
+            cv::Mat Twc = pKF->GetPoseInverse();
+            Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
+            cv::cv2eigen(Twc,ETwc);
+            Eigen::Vector4f X3Dc(tmpPoint.x, tmpPoint.y, tmpPoint.z, 1);
+            Eigen::Vector4f X3Dw = ETwc * X3Dc;
+            xx = X3Dw[0];
+            yy = X3Dw[1];
+            zz = X3Dw[2];
 
-                }
+//            //Multiplication below with OpenCV Mat is much slower
+//            cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << tmpPoint.x, tmpPoint.y, tmpPoint.z, 1);
+//            cv::Mat x3Dw = pKF->GetPoseInverse() * x3Dc;
+//            xx = x3Dw.at<float>(0, 0);
+//            yy = x3Dw.at<float>(1, 0);
+//            zz = x3Dw.at<float>(2, 0);
 
+//            // This direct method is as fast as the Eigen's method above
+//            float *itX =  Twc.ptr<float>(0);
+//            xx = itX[0] * tmpPoint.x + itX[1] * tmpPoint.y + itX[2] * tmpPoint.z + itX[3];
+//            float *itY =  Twc.ptr<float>(1);
+//            yy = itY[0] * tmpPoint.x + itY[1] * tmpPoint.y + itY[2] * tmpPoint.z + itY[3];
+//            float *itZ =  Twc.ptr<float>(2);
+//            zz = itZ[0] * tmpPoint.x + itZ[1] * tmpPoint.y + itZ[2] * tmpPoint.z + itZ[3];
+            if (yy <= heightUpperBound && yy >= heightLowerBound) {
+                pcl::PointXYZ point;
+                point.x = xx;
+                point.y = yy;
+                point.z = zz;
+                cloud->points.push_back(point);
             }
         }
+
+
+
+//
+//        cv::Mat depth = cv::imread(depthImageName.c_str(), cv::IMREAD_UNCHANGED);
+//        if (depth.empty())
+//        {
+//            continue;
+//        }
+//        depth.convertTo(depth, CV_32F, mpMap->mDepthMapFactor);
+
+//        int imgStep = 3;
+//        for (int r = 0; r < depth.rows; r += imgStep) {
+//            const float *itD = depth.ptr<float>(r);
+//            const float y = mpMap->mLookupY.at<float>(0, r);
+//            const float *itX = mpMap->mLookupX.ptr<float>();
+//            for (size_t c = 0; c < (size_t) depth.cols; c += imgStep, itD += imgStep, itX += imgStep) {
+//                float depthValue = *itD;
+//                float xx, yy, zz;
+//                if (depthValue > 0.1 && depthValue < 12.0) {
+//                    float zc = depthValue;
+//                    float xc = *itX * depthValue;
+//                    float yc = y * depthValue;
+//                    cv::Mat x3Dc = (cv::Mat_<float>(4, 1) << xc, yc, zc, 1);
+//                    cv::Mat x3Dw = pKF->GetPoseInverse() * x3Dc;
+//                    xx = x3Dw.at<float>(0, 0);
+//                    yy = x3Dw.at<float>(1, 0);
+//                    zz = x3Dw.at<float>(2, 0);
+//                    if (abs(yy) < 0.55) {
+//                        point.x = xx;
+//                        point.y = yy;
+//                        point.z = zz;
+//                        unique_lock<mutex> lock(mMutexCloud);
+//                        cloud->points.push_back(point);
+//                    }
+//
+//                }
+//
+//            }
+//        }
     }
 }
 
@@ -321,7 +383,7 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
         tree.updateNode(octomap::point3d(p.x, p.y, p.z), true);
     }
     tree.updateInnerOccupancy();
-    boost::filesystem::path parentPath(msDepthImagesPath);
+    boost::filesystem::path parentPath(msPointCloudPath);
     parentPath = parentPath.parent_path();
     boost::filesystem::path resultPath("Results");
     resultPath = parentPath / resultPath;
@@ -380,7 +442,9 @@ void MapDrawer::DrawMapPoints()
         if (vpMPs[i]->isBad() || spRefMPs.count(vpMPs[i]))
             continue;
         cv::Mat pos = vpMPs[i]->GetWorldPos();
-        glVertex3f(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
+        float *it = pos.ptr<float>(0);
+        glVertex3f(it[0], it[1], it[2]);
+//        glVertex3f(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
     }
     glEnd();
 
@@ -392,7 +456,9 @@ void MapDrawer::DrawMapPoints()
         if (!(*sit) || (*sit)->isBad())
             continue;
         cv::Mat pos = (*sit)->GetWorldPos();
-        glVertex3f(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
+        float *it = pos.ptr<float>(0);
+        glVertex3f(it[0], it[1], it[2]);
+//        glVertex3f(pos.at<float>(0), pos.at<float>(1), pos.at<float>(2));
 
     }
 
@@ -468,8 +534,12 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph)
                     if (spKFi->mnId < spKF->mnId)
                         continue;
                     cv::Mat Ow2 = spKFi->GetCameraCenter();
-                    glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
-                    glVertex3f(Ow2.at<float>(0), Ow2.at<float>(1), Ow2.at<float>(2));
+                    float *it = Ow.ptr<float>(0);
+                    glVertex3f(it[0], it[1], it[2]);
+                    float *it2 = Ow2.ptr<float>(0);
+                    glVertex3f(it2[0], it2[1], it2[2]);
+//                    glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
+//                    glVertex3f(Ow2.at<float>(0), Ow2.at<float>(1), Ow2.at<float>(2));
                 }
             }
 
@@ -477,8 +547,12 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph)
             std::weak_ptr<KeyFrame> pParent = spKF->GetParent();
             if (!pParent.expired()) {
                 cv::Mat Owp = pParent.lock()->GetCameraCenter();
-                glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
-                glVertex3f(Owp.at<float>(0), Owp.at<float>(1), Owp.at<float>(2));
+                float *it = Ow.ptr<float>(0);
+                glVertex3f(it[0], it[1], it[2]);
+                float *itp = Owp.ptr<float>(0);
+                glVertex3f(itp[0], itp[1], itp[2]);
+//                glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
+//                glVertex3f(Owp.at<float>(0), Owp.at<float>(1), Owp.at<float>(2));
             }
 
             // Loops
@@ -493,8 +567,12 @@ void MapDrawer::DrawKeyFrames(const bool bDrawKF, const bool bDrawGraph)
                 if (spKFi->mnId < spKF->mnId)
                     continue;
                 cv::Mat Owl = spKFi->GetCameraCenter();
-                glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
-                glVertex3f(Owl.at<float>(0), Owl.at<float>(1), Owl.at<float>(2));
+                float *it = Ow.ptr<float>(0);
+                glVertex3f(it[0], it[1], it[2]);
+                float *itl = Owl.ptr<float>(0);
+                glVertex3f(itl[0], itl[1], itl[2]);
+//                glVertex3f(Ow.at<float>(0), Ow.at<float>(1), Ow.at<float>(2));
+//                glVertex3f(Owl.at<float>(0), Owl.at<float>(1), Owl.at<float>(2));
             }
         }
 
@@ -558,28 +636,57 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
         {
             unique_lock<mutex> lock(mMutexCamera);
             Rwc = mCameraPose.rowRange(0, 3).colRange(0, 3).t();
-            twc = -Rwc * mCameraPose.rowRange(0, 3).col(3);
+//            twc = -Rwc * mCameraPose.rowRange(0, 3).col(3);
+            Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ERwc;
+            cv::cv2eigen(Rwc,ERwc);
+            Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> Etcw;
+            cv::cv2eigen(mCameraPose.rowRange(0, 3).col(3),Etcw);
+            Eigen::Vector3f Etwc = -ERwc * Etcw;
+            cv::eigen2cv(Etwc, twc);
         }
-
-        M.m[0] = Rwc.at<float>(0, 0);
-        M.m[1] = Rwc.at<float>(1, 0);
-        M.m[2] = Rwc.at<float>(2, 0);
+        float *it1 =  Rwc.ptr<float>(0);
+        float *it2 =  Rwc.ptr<float>(1);
+        float *it3 =  Rwc.ptr<float>(2);
+        M.m[0] = it1[0];
+        M.m[1] = it2[0];
+        M.m[2] = it3[0];
         M.m[3] = 0.0;
 
-        M.m[4] = Rwc.at<float>(0, 1);
-        M.m[5] = Rwc.at<float>(1, 1);
-        M.m[6] = Rwc.at<float>(2, 1);
+        M.m[4] = it1[1];
+        M.m[5] = it2[1];
+        M.m[6] = it3[1];
         M.m[7] = 0.0;
 
-        M.m[8] = Rwc.at<float>(0, 2);
-        M.m[9] = Rwc.at<float>(1, 2);
-        M.m[10] = Rwc.at<float>(2, 2);
+        M.m[8] = it1[2];
+        M.m[9] = it2[2];
+        M.m[10] = it3[2];
         M.m[11] = 0.0;
 
-        M.m[12] = twc.at<float>(0);
-        M.m[13] = twc.at<float>(1);
-        M.m[14] = twc.at<float>(2);
+        float *itTwc =  twc.ptr<float>(0);
+        M.m[12] = itTwc[0];
+        M.m[13] = itTwc[1];
+        M.m[14] = itTwc[2];
         M.m[15] = 1.0;
+
+//        M.m[0] = Rwc.at<float>(0, 0);
+//        M.m[1] = Rwc.at<float>(1, 0);
+//        M.m[2] = Rwc.at<float>(2, 0);
+//        M.m[3] = 0.0;
+//
+//        M.m[4] = Rwc.at<float>(0, 1);
+//        M.m[5] = Rwc.at<float>(1, 1);
+//        M.m[6] = Rwc.at<float>(2, 1);
+//        M.m[7] = 0.0;
+//
+//        M.m[8] = Rwc.at<float>(0, 2);
+//        M.m[9] = Rwc.at<float>(1, 2);
+//        M.m[10] = Rwc.at<float>(2, 2);
+//        M.m[11] = 0.0;
+//
+//        M.m[12] = twc.at<float>(0);
+//        M.m[13] = twc.at<float>(1);
+//        M.m[14] = twc.at<float>(2);
+//        M.m[15] = 1.0;
     }
     else
         M.SetIdentity();
@@ -588,6 +695,8 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
 void MapDrawer::clear()
 {
     mCloud.reset();
+    mSolution.clear();
+    mObstacles.clear();
 }
 
 void MapDrawer::CloseOctoMapThread()
@@ -1002,9 +1111,16 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
         std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
         return;
     }
-    cv::Mat x3Dw = Twc * x3Dc;
-    output[0] = x3Dw.at<float>(0, 0);
-    output[1] = x3Dw.at<float>(2, 0);
+    Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
+    cv::cv2eigen(Twc,ETwc);
+    Eigen::Vector4f EX3Dc;
+    cv::cv2eigen(x3Dc,EX3Dc);
+    Eigen::Vector4f EX3Dw = ETwc * EX3Dc;
+//    cv::Mat x3Dw = Twc * x3Dc;
+//    output[0] = x3Dw.at<float>(0, 0);
+//    output[1] = x3Dw.at<float>(2, 0);
+    output[0] = EX3Dw[0];
+    output[1] = EX3Dw[1];
 }
 
 void MapDrawer::OmplPathPlanning(std::vector<float> &start, std::vector<float> &target,
@@ -1108,5 +1224,9 @@ void MapDrawer::OmplPathPlanning(std::vector<float> &start, std::vector<float> &
     {
         std::cout << "Cannot find a path ... " << std::endl;
     }
+}
+void MapDrawer::AutoBuildMap()
+{
+
 }
 } //namespace ORB_SLAM

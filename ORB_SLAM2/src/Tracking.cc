@@ -51,7 +51,7 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpSystem(pSys), mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer),
     mpMap(pMap), mnLastRelocFrameId(0), mbSegStop(false),
-    mbReuseMap(bReuseMap), msDataFolder(dataDir), msDepthImagesFolder("DepthImages")
+    mbReuseMap(bReuseMap), msDataFolder(dataDir), msPointCloudFolder("PointCloud")
 {
     // Load camera parameters from settings file
 
@@ -148,8 +148,8 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
     }
     StartSegmentationThread();
 
-    boost::filesystem::path depthImageFolder(msDepthImagesFolder);
-    boost::filesystem::path depthImageFolderFullPath = msDataFolder / depthImageFolder;
+    boost::filesystem::path pointCloudFolder(msPointCloudFolder);
+    boost::filesystem::path pointCloudFolderFullPath = msDataFolder / pointCloudFolder;
     if (!mbReuseMap)
     {
         std::string deleteDepth;
@@ -182,8 +182,8 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
                 {
                     std::cout << "Deleting and recreating the DepthImage folder ..." << std::endl;
 
-                    boost::filesystem::remove_all(depthImageFolderFullPath);
-                    boost::filesystem::create_directories(depthImageFolderFullPath);
+                    boost::filesystem::remove_all(pointCloudFolderFullPath);
+                    boost::filesystem::create_directories(pointCloudFolderFullPath);
 
                     std::cout << "Deleting and recreating the DepthImage folder done ... " << std::endl;
                     break;
@@ -227,8 +227,8 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
                                      mThDepth,
                                      rows,
                                      cols);
-    KeyFrame::InitializeStaticVariables(depthImageFolderFullPath.string());
-    MapDrawer::msDepthImagesPath = depthImageFolderFullPath.string();
+    KeyFrame::InitializeStaticVariables(pointCloudFolderFullPath.string());
+    MapDrawer::msPointCloudPath = pointCloudFolderFullPath.string();
 }
 
 void Tracking::SetLocalMapper(std::shared_ptr<LocalMapping> pLocalMapper)
@@ -1665,9 +1665,9 @@ void Tracking::ChangeCalibration(const string &strSettingPath)
                                      mThDepth,
                                      rows,
                                      cols);
-    boost::filesystem::path depthImageFolder(msDepthImagesFolder);
-    boost::filesystem::path depthImageFolderFullPath = msDataFolder / depthImageFolder;
-    KeyFrame::InitializeStaticVariables(depthImageFolderFullPath.string());
+    boost::filesystem::path pointCloudFolder(msPointCloudFolder);
+    boost::filesystem::path pointCloudFolderFullPath = msDataFolder / pointCloudFolder;
+    KeyFrame::InitializeStaticVariables(pointCloudFolderFullPath.string());
 }
 
 void Tracking::InformOnlyTracking(const bool &flag)

@@ -66,14 +66,16 @@ public:
     std::vector<float> mvStart;
     std::vector<float> mvTarget;
     std::unique_ptr<std::thread> mpThreadOctomap;
-    static std::string msDepthImagesPath;
+    static std::string msPointCloudPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
     std::vector<std::vector<float> > mSolution;
     std::vector<std::vector<int> > mObstacles;
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                            int begin, int step);
+                            int begin, int step,
+                            float heightUpperBound = 0.5,
+                            float heightLowerBound = -0.5);
 
     void FindObjects();
 
@@ -96,6 +98,8 @@ public:
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                           pcl::PointCloud<pcl::PointXYZ>::Ptr output);
+
+    void AutoBuildMap();
 
     void clear();
 
