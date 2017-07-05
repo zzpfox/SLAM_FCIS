@@ -16,51 +16,102 @@ void PathPlanning2D::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud
     mCloud = cloud;
 }
 
+void PathPlanning2D::reset()
+{
+    mvStartG.clear();
+    mvStartW.clear();
+    mvTmpStartW.clear();
+    mvTargetG.clear();
+    mvTargetW.clear();
+    mvTmpTargetW.clear();
+    mCloud.reset();
+    mSolution.clear();
+    mObstacles.clear();
+    mObstaclesHeight.clear();
+    mvBounds.clear();
+    mvCandidatesValidStart.clear();
+    mvCandidatesValidTarget.clear();
+}
 void PathPlanning2D::PlanPath(std::vector<float> &start,
                               std::vector<float> &target,
                               pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
 {
-    mvStart = start;
-    mvTarget = target;
     UpdatePointCloud(cloud);
+    mvStartW = start;
+    mvTargetW = target;
+    Get2DBounds();
+    WorldToGrid(mvStartW, mvStartG);
+    WorldToGrid(mvTargetW, mvTargetG);
     OmplPathPlanning();
 }
 void PathPlanning2D::ShowPlannedPath()
 {
-    if (mvStart.size() == 2 && mvTarget.size() == 2)
+    if (mvStartG.size() == 2 && mvTargetG.size() == 2)
     {
         glPointSize(mPointSize);
         glBegin(GL_POINTS);
         glColor3f(1.0, 0.0, 0.0);
-        glVertex3f(mvStart[0], 5, mvStart[1]);
-        glVertex3f(mvTarget[0], 5, mvTarget[1]);
+        glVertex3f(mvStartW[0], 5, mvStartW[1]);
+        glVertex3f(mvTargetW[0], 5, mvTargetW[1]);
+        glEnd();
+        glPointSize(mPointSize);
+        glBegin(GL_POINTS);
+        glColor3f(1.0, 1.0, 0.0);
+        glVertex3f(mvTmpStartW[0], 5, mvTmpStartW[1]);
+        glVertex3f(mvTmpTargetW[0], 5, mvTmpTargetW[1]);
         glEnd();
     }
+
+    glPointSize(mPointSize);
+    glBegin(GL_POINTS);
+    glColor3f(0.8, 0.5, 0.4);
+    for (int k = 0; k < mvCandidatesValidStart.size(); k++)
+    {
+        std::vector<float> point;
+        std::vector<int> tmp = {mvCandidatesValidStart[k].second[1], mvCandidatesValidStart[k].second[0]};
+        GridToWorld(tmp, point);
+        glVertex3f(point[0], 5, point[1]);
+    }
+    glEnd();
+    glBegin(GL_POINTS);
+    glColor3f(1.0, 0.5, 0.5);
+    for (int k = 0; k < mvCandidatesValidTarget.size(); k++)
+    {
+        std::vector<float> point;
+        std::vector<int> tmp = {mvCandidatesValidTarget[k].second[1], mvCandidatesValidTarget[k].second[0]};
+        GridToWorld(tmp, point);
+        glVertex3f(point[0], 5, point[1]);
+    }
+    glEnd();
+
     glLineWidth(mLineWidth);
     glColor3f(0.0, 1.0, 0.0);
     glBegin(GL_LINES);
-    for (int i = 0; i < mSolution.size() - 1; i++)
+    if (mSolution.size() > 0)
     {
-        glVertex3f(mSolution[i][0], 5.0, mSolution[i][1]);
-        glVertex3f(mSolution[i + 1][0], 5.0, mSolution[i + 1][1]);
+        for (int i = 0; i < static_cast<int> (mSolution.size()) - 1; i++)
+        {
+            glVertex3f(mSolution[i][0], 5.0, mSolution[i][1]);
+            glVertex3f(mSolution[i + 1][0], 5.0, mSolution[i + 1][1]);
+        }
     }
 
     glEnd();
-    glPointSize(mPointSize / 6.0);
+
     {
         glPushAttrib(GL_ENABLE_BIT);
-        if (mSolution.size() > 0 && mvStart.size() == 2 && mvTarget.size() == 2)
+        if (mSolution.size() > 0 && mvStartG.size() == 2 && mvTargetG.size() == 2)
         {
             glLineStipple(2, 0x00FF);
             glEnable(GL_LINE_STIPPLE);
             glLineWidth(mLineWidth);
             glColor3f(1.0, 1.0, 0.0);
             glBegin(GL_LINES);
-            glVertex3f(mvStart[0], 5.0, mvStart[1]);
+            glVertex3f(mvStartW[0], 5.0, mvStartW[1]);
             glVertex3f(mSolution.front()[0], 5.0, mSolution.front()[1]);
             glEnd();
             glBegin(GL_LINES);
-            glVertex3f(mvTarget[0], 5.0, mvTarget[1]);
+            glVertex3f(mvTargetW[0], 5.0, mvTargetW[1]);
             glVertex3f(mSolution.back()[0], 5.0, mSolution.back()[1]);
             glEnd();
             glPopAttrib();
@@ -68,7 +119,7 @@ void PathPlanning2D::ShowPlannedPath()
         }
     }
 
-
+    glPointSize(mPointSize / 6.0);
     glBegin(GL_POINTS);
     glColor3f(0.0, 0.0, 1.0);
     for (int i = 0; i < mObstacles.size(); i++)
@@ -89,24 +140,29 @@ void PathPlanning2D::ShowPlannedPath()
 
 void PathPlanning2D::OmplPathPlanning()
 {
-    if (mvStart.size() != 2 || mvTarget.size() != 2)
+    if (mvStartG.size() != 2 || mvTargetG.size() != 2)
     {
         std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
                   << "\x1B[0m" << std::endl;
         exit(EXIT_FAILURE);
     }
-    Get2DBounds();
-    std::vector<int> nStart(2, 0);
-    std::vector<int> nTarget(2, 0);
-    WorldToGrid(mvStart, nStart);
-    WorldToGrid(mvTarget, nTarget);
     GenerateOccupancyMap();
 
-    GetClosestFreePoint(nStart, mObstacles, 40);
-    GetClosestFreePoint(nTarget, mObstacles, 40);
-
+    if (!GetClosestFreePoint(mvStartG, 80, mvCandidatesValidStart))
+    {
+        std::cout << "Cannot find an obstacle-free place near start point" << std::endl;
+        return;
+    }
+    if (!GetClosestFreePoint(mvTargetG, 80, mvCandidatesValidTarget))
+    {
+        std::cout << "Cannot find an obstacle-free place near target point" << std::endl;
+        return;
+    }
+    GridToWorld(mvStartG, mvTmpStartW);
+    GridToWorld(mvTargetG, mvTmpTargetW);
     Plane2DEnvironment env(mObstacles, msPlanner);
-    if (env.Plan(nStart, nTarget))
+    mSolution.clear();
+    if (env.Plan(mvStartG, mvTargetG))
     {
         std::vector<std::vector<int> > vSolution;
         env.GetSolution(vSolution);
@@ -117,7 +173,6 @@ void PathPlanning2D::OmplPathPlanning()
         else
         {
             std::cout << "Find a path ..." << std::endl;
-            mSolution.clear();
             for (std::vector<std::vector<int> >::iterator st = vSolution.begin(); st != vSolution.end(); st++) //in right order
             {
                 std::vector<float> point;
@@ -137,34 +192,38 @@ void PathPlanning2D::OmplPathPlanning()
 void PathPlanning2D::SimplePathPlanning()
 {
 
-    if (mvStart.size() != 2 || mvTarget.size() != 2)
+    if (mvStartG.size() != 2 || mvTargetG.size() != 2)
     {
         std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
                   << "\x1B[0m" << std::endl;
         exit(EXIT_FAILURE);
     }
     const int nMaxIter = 10000;
-    Get2DBounds();
-    std::vector<int> nStart(2, 0);
-    std::vector<int> nTarget(2, 0);
-    WorldToGrid(mvStart, nStart);
-    WorldToGrid(mvTarget, nTarget);
 
     GenerateOccupancyMap();
-    GetClosestFreePoint(nStart, mObstacles, 40);
-    GetClosestFreePoint(nTarget, mObstacles, 40);
+    if (!GetClosestFreePoint(mvStartG, 40, mvCandidatesValidStart))
+    {
+        std::cout << "Cannot find an obstacle-free place near start point" << std::endl;
+        return;
+    }
+    if (!GetClosestFreePoint(mvTargetG, 40, mvCandidatesValidTarget))
+    {
+        std::cout << "Cannot find an obstacle-free place near target point" << std::endl;
+        return;
+    }
 
     std::vector<std::shared_ptr<RRTNode> > vStartTree;
     std::vector<std::shared_ptr<RRTNode> > vTargetTree;
 
-    vStartTree.push_back(std::make_shared<RRTNode> (nStart));
-    vTargetTree.push_back(std::make_shared<RRTNode> (nTarget));
+    vStartTree.push_back(std::make_shared<RRTNode> (mvStartG));
+    vTargetTree.push_back(std::make_shared<RRTNode> (mvTargetG));
     int nCount = 0;
     int ncStepSize = 6; //pixel
 
     std::vector<std::shared_ptr<RRTNode> > vSolution;
     srand (time(NULL));
     bool bFoundPath = false;
+    mSolution.clear();
     while (nCount < nMaxIter)  //max iteration
     {
         nCount++;
@@ -239,12 +298,12 @@ void PathPlanning2D::SimplePathPlanning()
             if (!bChanged) nSpan++;
         }
 
-        mSolution.clear();
+
         for (std::vector<std::shared_ptr<RRTNode> >::iterator st = vSolution.begin(); st != vSolution.end(); st++) //in right order
         {
-            float yy = (*st)->mPoint[1] * mfcLeafSize + mvBounds[2];
-            float xx = (*st)->mPoint[0] * mfcLeafSize + mvBounds[0];
-            std::vector<float> point = {xx, yy};
+            std::vector<int> tmpPoint = {(*st)->mPoint[0], (*st)->mPoint[1]};
+            std::vector<float> point;
+            GridToWorld(tmpPoint, point);
             mSolution.push_back(point);
         }
         break;
@@ -284,34 +343,110 @@ void PathPlanning2D::SimplePathPlanning()
 
 }
 
-void PathPlanning2D::GetClosestFreePoint(std::vector<int> &output, std::vector<std::vector<int> > &obstacles, int searchWidth)
+bool PathPlanning2D::GetClosestFreePoint(std::vector<int> &output, int searchWidth,
+                                         std::vector<std::pair<float, std::vector<int> > > &candidateOutput)
 {
-    if (obstacles[output[1]][output[0]] == 1)
-    {
-        int nSearchWidth = 40;
-        std::vector<int> tmpOutput(2, 0);
-        int minDistance = std::numeric_limits<int>::max();
-        for (int i = -nSearchWidth; i < nSearchWidth; i++)
-        {
-            for (int j = -nSearchWidth; j < nSearchWidth; j++)
-            {
-                int y = output[1] + i;
-                int x = output[0] + j;
-                if (y >= 0 && y < obstacles.size() && x >= 0 && x < obstacles[0].size())
+    if (mObstacles[output[1]][output[0]] == 1) {
+        float heightThreshold = 0.6;
+        std::vector<std::pair<float, std::vector<int> > > vCandidates(8,
+                                                                      std::make_pair(std::numeric_limits<float>::lowest(),
+                                                                                     std::vector<int>(2, 0)));
+        std::vector<bool> vbCandidateInValid(8, false);
+        std::vector<bool> vbCandidateSearchComplete(8, false);
+        for (int i = 1; i < searchWidth + 1; i++) {
+            std::vector<std::vector<int> > vSearchDirection = {{0, i},
+                                                               {i, i},
+                                                               {i, 0},
+                                                               {i, -i},
+                                                               {0, -i},
+                                                               {-i, -i},
+                                                               {-i, 0},
+                                                               {-i, i}};
+//            find the minimum of the maximum height along 8 directions
+//            if the height is too large, abandon that direction
+            for (int j = 0; j < vSearchDirection.size(); j++) {
+                if (vbCandidateInValid[j] || vbCandidateSearchComplete[j]) {
+                    continue;
+                }
+                int y = output[1] + vSearchDirection[j][0];
+                int x = output[0] + vSearchDirection[j][1];
+                if (x < 0 || x >= mObstacles[0].size() || y < 0 || y >= mObstacles.size())
                 {
-                    if (obstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
-                    {
-                        minDistance = abs(i) + abs(j);
-                        tmpOutput[0] = x;
-                        tmpOutput[1] = y;
-                    }
-
+                    vbCandidateInValid[j] = true;
+                    continue;
+                }
+                float currentHeight = mObstaclesHeight[y][x];
+                if (currentHeight >= heightThreshold) {
+                    vbCandidateInValid[j] = true;
+                    continue;
+                }
+                std::pair<float, std::vector<int> >& candidateHeightCoord = vCandidates[j];
+                if (candidateHeightCoord.first < currentHeight) {
+                    candidateHeightCoord.first = currentHeight;
+                }
+                std::vector<int> coord = {y, x};
+                candidateHeightCoord.second = coord;
+                if (mObstacles[coord[0]][coord[1]] == 0) {
+                    vbCandidateSearchComplete[j] = true;
                 }
             }
+            bool finished = std::all_of(vbCandidateSearchComplete.begin(),
+                                        vbCandidateSearchComplete.end(), [](bool i)
+                                        { return i; });
+            if (finished) {
+                break;
+            }
+
         }
-        output = tmpOutput;
-        // TODO: deal with the case when there is no space without obstacles
+        std::vector<std::pair<float, std::vector<int> > > vCandidatesValid;
+        for (int i = 0; i < vCandidates.size(); i++) {
+            if (!vbCandidateInValid[i]) {
+                vCandidatesValid.push_back(vCandidates[i]);
+            }
+        }
+        if (vCandidatesValid.size() > 0) {
+            std::sort(vCandidatesValid.begin(), vCandidatesValid.end(),
+                      [](const std::pair<float, std::vector<int> > &lhs,
+                         const std::pair<float, std::vector<int> > &rhs)
+                      { return lhs.first < rhs.first; });
+//            for (int k = 0; k < vCandidatesValid.size(); k++)
+//            {
+//                std::cout << vCandidatesValid[k].second[1] << " " << vCandidatesValid[k].second[0] << "   height " << vCandidatesValid[k].first<<std::endl;
+//            }
+//            std::cout << "======" << std::endl;
+            output[0] = vCandidatesValid[0].second[1];
+            output[1] = vCandidatesValid[0].second[0];
+            candidateOutput = vCandidatesValid;
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
+    return true;
+
+//        for (int i = -nSearchWidth; i < nSearchWidth; i++)
+//        {
+//            for (int j = -nSearchWidth; j < nSearchWidth; j++)
+//            {
+//                int y = output[1] + i;
+//                int x = output[0] + j;
+//                if (y >= 0 && y < obstacles.size() && x >= 0 && x < obstacles[0].size())
+//                {
+//                    if (obstacles[y][x] == 0 && (abs(i) + abs(j)) < minDistance)
+//                    {
+//                        minDistance = abs(i) + abs(j);
+//                        tmpOutput[0] = x;
+//                        tmpOutput[1] = y;
+//                    }
+//
+//                }
+//            }
+//        }
+//        output = tmpOutput;
+//        // TODO: deal with the case when there is no space without obstacles
+
 }
 
 bool PathPlanning2D::SimpleRRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
@@ -427,9 +562,9 @@ bool PathPlanning2D::SimpleRRTTreesIntersect(std::vector<std::shared_ptr<RRTNode
 void PathPlanning2D::Get2DBounds()
 {
     mvBounds[0] = std::numeric_limits<float>::max();
-    mvBounds[1] = std::numeric_limits<float>::min();
+    mvBounds[1] = std::numeric_limits<float>::lowest();
     mvBounds[2] = std::numeric_limits<float>::max();
-    mvBounds[3] = std::numeric_limits<float>::min();
+    mvBounds[3] = std::numeric_limits<float>::lowest();
     for (auto p: mCloud->points)
     {
         if (p.x < mvBounds[0])
@@ -449,14 +584,14 @@ void PathPlanning2D::Get2DBounds()
             mvBounds[3] = p.z;
         }
     }
-    mvBounds[0] = std::min(mvBounds[0], mvStart[0]);
-    mvBounds[0] = std::min(mvBounds[0], mvTarget[0]);
-    mvBounds[1] = std::max(mvBounds[1], mvStart[0]);
-    mvBounds[1] = std::max(mvBounds[1], mvTarget[0]);
-    mvBounds[2] = std::min(mvBounds[2], mvStart[1]);
-    mvBounds[2] = std::min(mvBounds[2], mvTarget[1]);
-    mvBounds[3] = std::max(mvBounds[3], mvStart[1]);
-    mvBounds[3] = std::max(mvBounds[3], mvTarget[1]);
+    mvBounds[0] = std::min(mvBounds[0], mvStartW[0]);
+    mvBounds[0] = std::min(mvBounds[0], mvTargetW[0]);
+    mvBounds[1] = std::max(mvBounds[1], mvStartW[0]);
+    mvBounds[1] = std::max(mvBounds[1], mvTargetW[0]);
+    mvBounds[2] = std::min(mvBounds[2], mvStartW[1]);
+    mvBounds[2] = std::min(mvBounds[2], mvTargetW[1]);
+    mvBounds[3] = std::max(mvBounds[3], mvStartW[1]);
+    mvBounds[3] = std::max(mvBounds[3], mvTargetW[1]);
 }
 
 void PathPlanning2D::CalGridSize()
@@ -469,10 +604,38 @@ void PathPlanning2D::GenerateOccupancyMap()
     CalGridSize();
     mObstacles.clear();
     mObstacles = std::vector<std::vector<int> > (mnSizeY, std::vector<int> (mnSizeX, 0));
-
+    mObstaclesHeight.clear();
+    mObstaclesHeight = std::vector<std::vector<float> > (mnSizeY, std::vector<float> (mnSizeX, std::numeric_limits<float>::lowest()));
+//    std::vector<std::vector<int> > obstaclesOri(mnSizeY, std::vector<int> (mnSizeX,0 ));
+//    for (auto p : mCloud->points) {
+//        int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
+//        int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
+//        obstaclesOri[nTmpY][nTmpX] = 1;
+//    }
+//    for (auto p : mCloud->points) {
+//        int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
+//        int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
+//        for (int i = nTmpX - mfObstacleWidth; i < nTmpX + mfObstacleWidth; i++) {
+//            for (int j = nTmpY - mfObstacleWidth; j < nTmpY + mfObstacleWidth; j++) {
+//                if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY) {
+//                    mObstacles[j][i] = 1;
+//
+//                    if (obstaclesOri[j][i] == 0) // expanded cost map
+//                    {
+//                        mObstaclesHeight[nTmpY][nTmpX] = std::numeric_limits<float>::max();
+//                    }
+//                }
+//
+//            }
+//        }
+//    }
     for (auto p : mCloud->points) {
         int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
         int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
+        if (mObstaclesHeight[nTmpY][nTmpX] < -p.y)
+        {
+            mObstaclesHeight[nTmpY][nTmpX] = -p.y;
+        }
         for (int i = nTmpX - mfObstacleWidth; i < nTmpX + mfObstacleWidth; i++)
         {
             for (int j = nTmpY - mfObstacleWidth; j < nTmpY + mfObstacleWidth; j++)
@@ -480,10 +643,36 @@ void PathPlanning2D::GenerateOccupancyMap()
                 if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY)
                 {
                     mObstacles[j][i] = 1;
+
                 }
 
             }
         }
+
+//        for (int i = nTmpX - mfObstacleWidth; i < nTmpX + mfObstacleWidth; i++)
+//        {
+//            for (int j = nTmpY - mfObstacleWidth; j < nTmpY + mfObstacleWidth; j++)
+//            {
+//                if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY)
+//                {
+//                    if (obstaclesOri[j][i] == 0) // expanded cost map
+//                    {
+//                        if (mObstaclesHeight[nTmpY][nTmpX] > -p.y)
+//                        {
+//                            mObstaclesHeight[nTmpY][nTmpX] = -p.y;
+//                        }
+//                    }
+//                    else
+//                    {
+//                        if (mObstaclesHeight[nTmpY][nTmpX] < -p.y)
+//                        {
+//                            mObstaclesHeight[nTmpY][nTmpX] = -p.y;
+//                        }
+//                    }
+//                }
+//
+//            }
+//        }
     }
 }
 void PathPlanning2D::WorldToGrid(std::vector<float> &input, std::vector<int> &output)

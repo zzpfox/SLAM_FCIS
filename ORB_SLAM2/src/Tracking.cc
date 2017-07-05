@@ -1194,16 +1194,20 @@ void Tracking::SaveSegResultToMap(const Client::ClsPosPairs &clsPosPairs, long u
                 objpos.addInstance(Pc);
             }
         }
+        if (objpos.Pcs.size() > 0)
+        {
+            objKeyFrameMap[keyFrameId] = objpos;
+            std::unique_lock<mutex> lock(mpMap->mMutexObjectMap);
+            auto it = mpMap->mObjectMap.find(objname);
+            if (it != mpMap->mObjectMap.end()) {
+                it->second.insert(objKeyFrameMap.begin(), objKeyFrameMap.end());
+            }
+            else {
+                mpMap->mObjectMap.insert(std::make_pair(objname, objKeyFrameMap));
+            }
+        }
 
-        objKeyFrameMap[keyFrameId] = objpos;
-        std::unique_lock<mutex> lock(mpMap->mMutexObjectMap);
-        auto it = mpMap->mObjectMap.find(objname);
-        if (it != mpMap->mObjectMap.end()) {
-            it->second.insert(objKeyFrameMap.begin(), objKeyFrameMap.end());
-        }
-        else {
-            mpMap->mObjectMap.insert(std::make_pair(objname, objKeyFrameMap));
-        }
+
     }
 }
 

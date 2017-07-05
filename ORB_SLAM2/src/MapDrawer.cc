@@ -104,7 +104,7 @@ void MapDrawer::CalPointCloud()
     }
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), clouds[i], i,
-                                 numThreads, 0.55, -0.55);
+                                 numThreads, 0.55, -1.0);
     }
     for (auto &th : threads) {
         th.join();
@@ -134,6 +134,7 @@ void MapDrawer::FindObjects()
 {
     if (mbFindObjCalPoints)
     {
+        mPathPlanning->reset();
         CalPointCloud();
         auto objectMap = mpMap->mObjectMap;
         std::vector<std::string> objectLists;
@@ -238,7 +239,7 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
             Eigen::Vector4f X3Dc(tmpPoint.x, tmpPoint.y, tmpPoint.z, 1);
             Eigen::Vector4f X3Dw = ETwc * X3Dc;
             xx = X3Dw[0];
-            yy = X3Dw[1];
+            yy = X3Dw[1];  // y axis is facing downward!!
             zz = X3Dw[2];
 
 //            //Multiplication below with OpenCV Mat is much slower
@@ -339,7 +340,7 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::Poin
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
     cout << "Original Cloud Size:" << cloud->points.size() << endl;
 
-    int n_points = cloud->points.size() * 0.25;
+    int n_points = cloud->points.size() * 0.05;
     pcl::RandomSample<pcl::PointXYZ> randomFilter;
     randomFilter.setSample(n_points);
     randomFilter.setInputCloud(cloud);
@@ -663,7 +664,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
         count++;
         if (count >= maxTrials)
         {
-            std::cout << "Cannot find object [" << object << "]" << std::endl;
+            std::cout << "\x1B[31m" << "Cannot find object [" << object << "]" << "\x1B[0m" << std::endl;
             return;
         }
     }while(poses.size() <= 0);
@@ -707,7 +708,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
 //    output[0] = x3Dw.at<float>(0, 0);
 //    output[1] = x3Dw.at<float>(2, 0);
     output[0] = EX3Dw[0];
-    output[1] = EX3Dw[1];
+    output[1] = EX3Dw[2];
 }
 
 } //namespace ORB_SLAM

@@ -34,6 +34,8 @@ public:
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
     void ShowPlannedPath();
 
+    void reset();
+
 private:
     void UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
@@ -42,9 +44,9 @@ private:
 //    Deprecated
     void SimplePathPlanning();
 
-    void GetClosestFreePoint(std::vector<int> &output,
-                             std::vector<std::vector<int> > &obstacles,
-                             int searchWidth);
+    bool GetClosestFreePoint(std::vector<int> &output,
+                             int searchWidth,
+                             std::vector<std::pair<float, std::vector<int> > > &candidateOutput);
 
     bool SimpleRRTTreeExpand(std::vector<std::shared_ptr<RRTNode> > &tree,
                              std::vector<std::vector<int> > &mObstacles,
@@ -63,11 +65,16 @@ private:
     void WorldToGrid(std::vector<float> &input, std::vector<int> &output);
     void GridToWorld(std::vector<int> &input, std::vector<float> &output);
 
-    std::vector<float> mvStart; //world coordinate projected onto the plane
-    std::vector<float> mvTarget;
+    std::vector<int> mvStartG; //coordinate in grid
+    std::vector<int> mvTargetG;
+    std::vector<float> mvStartW; //coordinate in world
+    std::vector<float> mvTargetW;
+    std::vector<float> mvTmpStartW; //coordinate in world
+    std::vector<float> mvTmpTargetW;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
     std::vector<std::vector<float> > mSolution;
     std::vector<std::vector<int> > mObstacles;
+    std::vector<std::vector<float> > mObstaclesHeight;
     const float mfcLeafSize;
     std::vector<float> mvBounds;
     std::string msPlanner;
@@ -76,6 +83,8 @@ private:
     int mnSizeX;
     int mnSizeY;
     float mfObstacleWidth;
+    std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidStart;
+    std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidTarget;
 
 };
 
