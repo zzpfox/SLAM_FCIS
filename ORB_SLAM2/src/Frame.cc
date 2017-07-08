@@ -188,6 +188,14 @@ void Frame::UpdatePoseMatrices()
     mOw = -mRcw.t() * mtcw;
 }
 
+cv::Mat Frame::GetPoseInverse()
+{
+    cv::Mat Twc = cv::Mat::eye(4, 4, mTcw.type());
+    mRwc.copyTo(Twc.rowRange(0, 3).colRange(0, 3));
+    mOw.copyTo(Twc.rowRange(0, 3).col(3));
+    return Twc.clone();
+}
+
 bool Frame::isInFrustum(std::shared_ptr<MapPoint> pMP, float viewingCosLimit)
 {
     pMP->mbTrackInView = false;

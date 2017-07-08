@@ -43,7 +43,7 @@ namespace ORB_SLAM2
 std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
-      mCloud(new pcl::PointCloud<pcl::PointXYZ>)
+      mCloud(new pcl::PointCloud<pcl::PointXYZ>())
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     if (!fSettings.isOpened())
@@ -80,7 +80,7 @@ void MapDrawer::DrawPointCloud()
     glEnd();
 }
 
-void MapDrawer::CalPointCloud()
+void MapDrawer::CalPointCloud(float sampleRatio)
 {
     std::chrono::time_point<std::chrono::system_clock> start, start2;
     std::chrono::time_point<std::chrono::system_clock> end;
@@ -115,9 +115,12 @@ void MapDrawer::CalPointCloud()
     }
     {
         unique_lock<mutex> lock(mMutexMCloud);
-        if (clouds[0]->points.size() > 0)
-            FilterPointCloud(cloud, mCloud);
-//            mCloud = cloud;
+        if (cloud->points.size() > 0)
+        {
+            FilterPointCloud(cloud, mCloud, sampleRatio);
+        }
+
+//        mCloud = cloud;
     }
     if (mpThreadOctomap) {
         mpThreadOctomap->join();
@@ -335,23 +338,27 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 }
 
 void
-MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr output)
+MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr output,
+                            float sampleRatio)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
     cout << "Original Cloud Size:" << cloud->points.size() << endl;
 
-    int n_points = cloud->points.size() * 0.05;
+    int n_points = cloud->points.size() * sampleRatio;
     pcl::RandomSample<pcl::PointXYZ> randomFilter;
     randomFilter.setSample(n_points);
     randomFilter.setInputCloud(cloud);
     randomFilter.filter(*cloudRandomFilter);
     cout << "Cloud Size After Random Sample Filter:" << cloudRandomFilter->points.size() << endl;
 
-//        // voxel filter
-//        pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
-//        voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
-//        voxelFilter.setInputCloud(cloud);
-//        voxelFilter.filter(*cloudVoxel);
+//    // voxel filter
+//    pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
+//    voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
+//    voxelFilter.setInputCloud(cloud);
+//    voxelFilter.filter(*cloudVoxel);
+//    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
 
     // statistical removal
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
@@ -361,7 +368,6 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::Poin
     sor.filter(*output);
 
     cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
-
 }
 
 void MapDrawer::DrawMapPoints()
@@ -525,8 +531,9 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
     const float &w = mCameraSize;
     const float h = w * 0.75;
     const float z = w * 0.6;
-
+    Twc.m[13] = 5.0;
     glPushMatrix();
+
 
 #ifdef HAVE_GLES
     glMultMatrixf(Twc.m);
@@ -634,8 +641,7 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
 
 void MapDrawer::clear()
 {
-    mCloud.reset();
-    mPathPlanning.reset();
+    mCloud.reset(new pcl::PointCloud<pcl::PointXYZ>());
 }
 
 void MapDrawer::CloseOctoMapThread()

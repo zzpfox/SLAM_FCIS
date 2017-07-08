@@ -140,7 +140,8 @@ public:
 
     // True if local mapping is deactivated and we are performing only localization
     bool mbOnlyTracking;
-
+    //Map
+    std::shared_ptr<Map> mpMap;
 
 
 
@@ -220,8 +221,7 @@ protected:
     std::shared_ptr<FrameDrawer> mpFrameDrawer;
     std::shared_ptr<MapDrawer> mpMapDrawer;
 
-    //Map
-    std::shared_ptr<Map> mpMap;
+
 
     //Calibration matrix
     cv::Mat mK;

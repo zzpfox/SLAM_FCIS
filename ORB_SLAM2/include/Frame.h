@@ -70,6 +70,8 @@ public:
     // Set the camera pose.
     void SetPose(cv::Mat Tcw);
 
+    cv::Mat GetPoseInverse();
+
     // Computes rotation, translation and camera center matrices from the camera pose.
     void UpdatePoseMatrices();
 

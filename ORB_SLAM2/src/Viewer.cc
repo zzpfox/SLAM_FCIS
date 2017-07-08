@@ -28,9 +28,11 @@ namespace ORB_SLAM2
 
 Viewer::Viewer(System *pSystem, std::shared_ptr<FrameDrawer> pFrameDrawer,
                std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Tracking> pTracking,
+               std::shared_ptr<AutoBuildMap> pAutoBuildMap,
                const string &strSettingPath, const bool bReuseMap)
     :
     mpSystem(pSystem), mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpTracker(pTracking),
+    mpAutoBuildMap(pAutoBuildMap),
     mbFinishRequested(false), mbFinished(true), mbStopped(true),
     mbStopRequested(false), mbReuseMap(bReuseMap)
 {
@@ -77,6 +79,7 @@ void Viewer::Run()
     pangolin::Var<bool> menuShowDenseMap("menu.Show DenseMap", false, true);
     pangolin::Var<bool> menuFetchObjects("menu.Fetch Objects", false, true);
     pangolin::Var<bool> menuShowSegObjects("menu.Show SegObjects", false, true);
+    pangolin::Var<bool> menuShowAutoMap("menu.Show AutoMap", false, true);
     pangolin::Var<bool> menuSaveMap("menu.Save Map", false, true);
     pangolin::Var<bool> menuReset("menu.Reset", false, false);
 
@@ -150,6 +153,15 @@ void Viewer::Run()
         }
         else {
             bShowObject = true;
+        }
+
+        if (menuShowAutoMap)
+        {
+            if (mpAutoBuildMap)
+            {
+                mpAutoBuildMap->Show2DMap();
+            }
+
         }
 
         if (menuFetchObjects) {

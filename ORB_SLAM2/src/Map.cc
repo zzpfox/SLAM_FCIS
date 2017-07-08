@@ -65,7 +65,7 @@ void Map::EraseMapPoint(std::shared_ptr<MapPoint> pMP)
 void Map::EraseKeyFrame(std::shared_ptr<KeyFrame> pKF)
 {
     unique_lock<mutex> lock(mMutexMap);
-    pKF->DeleteDepthImage();
+    pKF->DeletePointCloud();
     DeleteSegObjInKeyFrame(pKF);
     mspKeyFrames.erase(pKF);
     // TODO: This only erase the pointer.

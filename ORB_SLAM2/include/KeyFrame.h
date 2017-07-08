@@ -152,7 +152,7 @@ public:
         return pKF1.lock()->mnId < pKF2.lock()->mnId;
     }
 
-    void DeleteDepthImage();
+    void DeletePointCloud();
 
     static void SetVocabulary(std::shared_ptr<ORBVocabulary> pVocabulary);
 

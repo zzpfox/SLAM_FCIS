@@ -754,7 +754,7 @@ float KeyFrame::ComputeSceneMedianDepth(const int q)
     return vDepths[(vDepths.size() - 1) / q];
 }
 
-void KeyFrame::DeleteDepthImage()
+void KeyFrame::DeletePointCloud()
 {
     remove(mPointCloudName.c_str());
 }

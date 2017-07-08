@@ -26,6 +26,7 @@
 #include "MapDrawer.h"
 #include "Tracking.h"
 #include "System.h"
+#include "AutoBuildMap.h"
 #include <memory>
 #include <mutex>
 
@@ -45,6 +46,7 @@ class Viewer
 public:
     Viewer(System *pSystem, std::shared_ptr<FrameDrawer> pFrameDrawer,
            std::shared_ptr<MapDrawer> pMapDrawer, std::shared_ptr<Tracking> pTracking,
+           std::shared_ptr<AutoBuildMap> pAutoBuildMap,
            const string &strSettingPath, const bool bReuseMap=false);
 
     // Main thread function. Draw points, keyframes, the current camera pose and the last processed
@@ -69,6 +71,7 @@ private:
     std::shared_ptr<FrameDrawer> mpFrameDrawer;
     std::shared_ptr<MapDrawer> mpMapDrawer;
     std::shared_ptr<Tracking> mpTracker;
+    std::shared_ptr<AutoBuildMap> mpAutoBuildMap;
 
     // 1/fps in ms
     double mT;

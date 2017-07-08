@@ -63,7 +63,7 @@ public:
                             std::unordered_map<std::string,
                                                std::unordered_map<long unsigned int, ObjectPos> > &ObjectMap);
 
-    void CalPointCloud();
+    void CalPointCloud(float sampleRatio = 0.05);
 
     void OmplPathPlanning(std::vector<float> &start,
                           std::vector<float> &target,
@@ -76,7 +76,8 @@ public:
                             std::vector<std::vector<int> > &mObstacles);
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                          pcl::PointCloud<pcl::PointXYZ>::Ptr output);
+                          pcl::PointCloud<pcl::PointXYZ>::Ptr output,
+                          float sampleRatio = 0.05);
 
     void AutoBuildMap();
 

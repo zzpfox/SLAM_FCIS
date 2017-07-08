@@ -22,12 +22,14 @@
 
 #include "System.h"
 #include "Converter.h"
+#include <unistd.h>
 #include <thread>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <pangolin/pangolin.h>
 #include <iomanip>
 #include "Serialization.h"
+#include "AutoBuildMap.h"
 #include <boost/filesystem.hpp>
 bool has_suffix(const std::string &str, const std::string &suffix)
 {
@@ -39,13 +41,19 @@ namespace ORB_SLAM2
 {
 
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer, const bool bReuseMap)
+               const bool bUseViewer, const bool bReuseMap, const bool bAutoBuildMap)
     : mSensor(sensor), mbReset(false),
       mbActivateLocalizationMode(false),
       mbDeactivateLocalizationMode(false),
       msDataFolder("./Data"),
       msMapFileName("SLAM_Map.bin"), mbLoadMapSuccess(false)
 {
+    if (bReuseMap && bAutoBuildMap)
+    {
+        std::cout << "\x1B[31m" << "ERROR: cannot reuse map and automatically build map at same time"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
     boost::filesystem::path dataDir{msDataFolder};
     boost::filesystem::create_directories(dataDir);
     boost::filesystem::path mapFile(msMapFileName);
@@ -142,14 +150,22 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
                                                   mpVocabulary, mSensor != MONOCULAR);
     mptLoopClosing.reset(new thread(&ORB_SLAM2::LoopClosing::Run, mpLoopCloser));
 
+    if (bAutoBuildMap)
+    {
+        std::cout << "Entering Auto Build Map mode ... " << std::endl;
+        mpAutoBuildMap = std::make_shared<AutoBuildMap> (this, mpTracker, mpMapDrawer, fsSettings);
+        mptAutoBuildMap.reset(new thread(&AutoBuildMap::Run, mpAutoBuildMap));
+        mptAutoBuildMap->detach();
+    }
+
     //Initialize the Viewer thread and launch
     if (bUseViewer) {
-        mpViewer = std::make_shared<Viewer> (this, mpFrameDrawer, mpMapDrawer, mpTracker, strSettingsFile, bReuseMap);
+        mpViewer = std::make_shared<Viewer> (this, mpFrameDrawer, mpMapDrawer, mpTracker, mpAutoBuildMap, strSettingsFile, bReuseMap);
         mptViewer.reset(new thread(&Viewer::Run, mpViewer));
         mpTracker->SetViewer(mpViewer);
     }
 
-    //Set pointers between threads
+    // Set pointers between threads
     mpTracker->SetLocalMapper(mpLocalMapper);
     mpTracker->SetLoopClosing(mpLoopCloser);
 
@@ -165,7 +181,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         mptViewer->detach();
     }
 
+
+
 }
+
+
+
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp)
 {

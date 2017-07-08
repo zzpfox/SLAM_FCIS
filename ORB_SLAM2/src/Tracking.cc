@@ -472,6 +472,7 @@ void Tracking::Track()
             else
                 mVelocity = cv::Mat();
 
+            mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
             mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
             // Clean VO matches
@@ -577,7 +578,7 @@ void Tracking::StereoInitialization()
         std::vector<std::shared_ptr<MapPoint> > svpLocalMapPoints = mpMap->GetAllMapPoints();
         mvpLocalMapPoints.clear();
         for (std::vector<std::shared_ptr<MapPoint> >::iterator it = svpLocalMapPoints.begin();
-            it != svpLocalMapPoints.end(); ++it)
+             it != svpLocalMapPoints.end(); ++it)
         {
             std::weak_ptr<MapPoint> wit = *it;
             mvpLocalMapPoints.push_back(wit);
@@ -590,6 +591,8 @@ void Tracking::StereoInitialization()
         mpMap->mvpKeyFrameOrigins.push_back(wpKFini);
 
         mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+
+        mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
 
         mState = OK;
     }

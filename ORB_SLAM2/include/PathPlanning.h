@@ -4,6 +4,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <vector>
+#include <memory>
 #include <string>
 namespace ORB_SLAM2
 {
@@ -29,17 +30,26 @@ class PathPlanning2D
 {
 public:
     PathPlanning2D(std::string planner, float pointSize, float lineWidth);
-    void PlanPath(std::vector<float> &start,
+    bool PlanPath(std::vector<float> &start,
                   std::vector<float> &target,
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+    bool PlanPath(std::vector<float> &start,
+                  pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
     void ShowPlannedPath();
+    void ShowPlannedPath(std::vector<std::vector<float> > &obstacles);
 
     void reset();
 
+    std::vector<float> GetTargetW();
+
+    std::shared_ptr<std::vector<std::vector<float> > > mpSolution;
 private:
     void UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
-    void OmplPathPlanning();
+    void AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
+    bool OmplPathPlanning();
 
 //    Deprecated
     void SimplePathPlanning();
@@ -72,7 +82,6 @@ private:
     std::vector<float> mvTmpStartW; //coordinate in world
     std::vector<float> mvTmpTargetW;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
-    std::vector<std::vector<float> > mSolution;
     std::vector<std::vector<int> > mObstacles;
     std::vector<std::vector<float> > mObstaclesHeight;
     const float mfcLeafSize;
