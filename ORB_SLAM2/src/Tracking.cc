@@ -471,8 +471,10 @@ void Tracking::Track()
             }
             else
                 mVelocity = cv::Mat();
-
-            mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
+            if (mpSystem->mpAutoBuildMap)
+            {
+                mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
+            }
             mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
 
             // Clean VO matches
@@ -591,8 +593,11 @@ void Tracking::StereoInitialization()
         mpMap->mvpKeyFrameOrigins.push_back(wpKFini);
 
         mpMapDrawer->SetCurrentCameraPose(mCurrentFrame.mTcw);
+        if (mpSystem->mpAutoBuildMap)
+        {
+            mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
+        }
 
-        mpSystem->mpAutoBuildMap->SetCurrentFrame(mCurrentFrame);
 
         mState = OK;
     }

@@ -54,9 +54,6 @@ private:
     float mPointSize;
     std::mutex mMutexObstacle;
     std::mutex mMutexFrame;
-    std::mutex mMutexDepth;
-    std::mutex mMutexCameraCenter;
-    std::mutex mMutexTwc;
 
 
 

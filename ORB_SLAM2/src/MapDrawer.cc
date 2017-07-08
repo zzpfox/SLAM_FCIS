@@ -312,7 +312,7 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
 
 void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 {
-    pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
 //    {
 //        unique_lock<mutex> lock(mMutexMCloud);
 //        if (cloud->points.size() > 0)
@@ -322,7 +322,7 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 //    }
     // Generate octomap
     octomap::OcTree tree(0.05);
-    for (auto p:output->points) {
+    for (auto p:cloud->points) {
         tree.updateNode(octomap::point3d(p.x, p.y, p.z), true);
     }
     tree.updateInnerOccupancy();
@@ -334,6 +334,7 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
     boost::filesystem::path octoMapPath("octomap_office.ot");
     octoMapPath = resultPath / octoMapPath;
     tree.write(octoMapPath.string());
+    std::cout << "saving octomap done ..." << std::endl;
     return;
 }
 
