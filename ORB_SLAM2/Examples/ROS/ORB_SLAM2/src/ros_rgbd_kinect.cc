@@ -67,11 +67,13 @@ int main(int argc, char **argv)
 
     if (argc != 3 && argc != 4) {
         cerr << endl << "Usage: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings" << endl
-            <<"Or: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings reusemap" << endl;
+            <<"Or: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings reusemap" << endl
+            <<"Or: rosrun ORB_SLAM2 RGBD path_to_vocabulary path_to_settings automap" << endl;
         ros::shutdown();
         return 1;
     }
     bool reuseMap = false;
+    bool autoMap = false;
     std::string argvThree;
     if (argc == 4)
     {
@@ -80,10 +82,14 @@ int main(int argc, char **argv)
         {
             reuseMap = true;
         }
+        else if (argvThree == "automap")
+        {
+            autoMap = true;
+        }
     }
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true, reuseMap);
+    ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true, reuseMap, autoMap);
     ros::NodeHandle nh;
     ImageGrabber igb(&SLAM, nh);
 

@@ -69,7 +69,12 @@ Viewer.ViewpointZ: -1.8
 Viewer.ViewpointF: 500
 
 # Planner used to perform path planning, supported planners are as follows:
-# RRTConnect, RRTstar, RRTsharp, TRRT, pRRT, SBL, pSBL, 
-# FMT, BFMT, SPARS, SPARStwo, PRM
+# Sample-based planners:
+  # RRTConnect, RRTstar, TRRT, pRRT, SBL, pSBL, 
+  # FMT, BFMT, SPARS, SPARStwo, PRM
+# Search-based planners:
+  # adstar, arastar
 PathPlanningPlanner: RRTConnect
+
+AutoBuildMapPathPlanner: adstar
 

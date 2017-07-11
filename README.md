@@ -31,3 +31,4 @@ If we reuse the map previously stored, the program will load in the map and ente
 * Add naive version of RRT motion planning algorithm
 * Add OMPL motion planning library (**Please install ompl from source for the latest version**)
 * Support automatically exploring unkonwn area and building map
+* Add SBPL motion planning library ([SBPL](https://github.com/sbpl/sbpl))

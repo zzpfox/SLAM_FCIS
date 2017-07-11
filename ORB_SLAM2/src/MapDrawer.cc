@@ -31,6 +31,7 @@
 #include <octomap/octomap.h>
 #include <octomap/ColorOcTree.h>
 #include <pcl/filters/random_sample.h>
+
 #include <sstream>
 #include <iomanip>
 #include <limits>
@@ -60,7 +61,11 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mbCalPointCloud = true;
     mbFindObjCalPoints = true;
     std::string planner = static_cast<std::string> (fSettings["PathPlanningPlanner"]);
-    mPathPlanning = std::make_shared<PathPlanning2D> (planner, mPointSize * 6.0, mKeyFrameLineWidth * 4.0);
+    mPathPlanning = std::make_shared<PathPlanning2D> (planner,
+                                                      mPointSize * 6.0,
+                                                      mKeyFrameLineWidth * 4.0,
+                                                      5.0,
+                                                      0.025);
 }
 
 void MapDrawer::DrawPointCloud()
@@ -104,7 +109,7 @@ void MapDrawer::CalPointCloud(float sampleRatio)
     }
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), clouds[i], i,
-                                 numThreads, 0.55, -1.0);
+                                 numThreads, 0.75, -1.0);
     }
     for (auto &th : threads) {
         th.join();
@@ -615,7 +620,6 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
         M.m[13] = itTwc[1];
         M.m[14] = itTwc[2];
         M.m[15] = 1.0;
-
 //        M.m[0] = Rwc.at<float>(0, 0);
 //        M.m[1] = Rwc.at<float>(1, 0);
 //        M.m[2] = Rwc.at<float>(2, 0);

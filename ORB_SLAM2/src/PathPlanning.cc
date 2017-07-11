@@ -1,17 +1,45 @@
 #include "PathPlanning.h"
 #include <algorithm>
-
+#include "Thirdparty/sbpl/src/include/sbpl/headers.h"
 #include "OmplPathPlanning.h"
+#include <opencv2/opencv.hpp>
+#include <string>
+#include <unordered_set>
 namespace ORB_SLAM2
 {
 
-PathPlanning2D::PathPlanning2D(std::string planner, float pointSize, float lineWidth):
-    mfcLeafSize(0.025), msPlanner(planner), mPointSize(pointSize),
-    mLineWidth(lineWidth), mfObstacleWidth(9.0)
+PathPlanning2D::PathPlanning2D(std::string planner, float pointSize,
+                               float lineWidth,
+                               float obstacleWidth,
+                               float leafSize):
+    mfcLeafSize(leafSize), msPlanner(planner), mPointSize(pointSize),
+    mLineWidth(lineWidth), mfObstacleWidth(obstacleWidth), mbSBPLPathPlan(false)
 {
     mvBounds = std::vector<float> (4, 0.0);
     mpSolution = std::make_shared<std::vector<std::vector<float> > >();
-
+    std::unordered_set<std::string> OmplPlanners = {"RRTConnect", "RRTstar",
+                                                    "RRTsharp", "TRRT",
+                                                    "pRRT", "SBL",
+                                                    "pSBL", "FMT",
+                                                    "BFMT", "SPARS",
+                                                    "SPARStwo", "PRM"};
+    std::unordered_set<std::string> SBPLPlanners = {"adstar", "arastar"};
+    if (SBPLPlanners.count(msPlanner) > 0)
+    {
+        mbSBPLPathPlan = true;
+    }
+    else if (OmplPlanners.count(msPlanner) > 0)
+    {
+        mbSBPLPathPlan = false;
+    }
+    else
+    {
+        std::cout << "\x1B[31m" << "Unrecognized planner name: " << planner
+                  << "\x1B[0m" << std::endl;
+        std::cout << "Using RRTConnect instead ..." << std::endl;
+        msPlanner = "RRTConnect";
+        mbSBPLPathPlan = false;
+    }
 }
 
 void PathPlanning2D::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
@@ -64,7 +92,15 @@ bool PathPlanning2D::PlanPath(std::vector<float> &start,
     Get2DBounds();
     WorldToGrid(mvStartW, mvStartG);
     WorldToGrid(mvTargetW, mvTargetG);
-    bool bFindPath = OmplPathPlanning();
+    bool bFindPath = false;
+    if (mbSBPLPathPlan)
+    {
+        bFindPath = SBPLPathPlanning();
+    }
+    else
+    {
+        bFindPath = OmplPathPlanning();
+    }
     return bFindPath;
 }
 
@@ -83,7 +119,15 @@ bool PathPlanning2D::PlanPath(std::vector<float> &start,
     mvTargetW[1] = mvBounds[3] - 2 * mfcLeafSize;
     WorldToGrid(mvStartW, mvStartG);
     WorldToGrid(mvTargetW, mvTargetG);
-    bool bFindPath = OmplPathPlanning();
+    bool bFindPath = false;
+    if (mbSBPLPathPlan)
+    {
+        bFindPath = SBPLPathPlanning();
+    }
+    else
+    {
+        bFindPath = OmplPathPlanning();
+    }
     return bFindPath;
 }
 
@@ -184,106 +228,112 @@ void PathPlanning2D::ShowPlannedPath()
     }
     glEnd();
 }
-void PathPlanning2D::ShowPlannedPath(std::vector<std::vector<float> > &obstacles)
+
+bool PathPlanning2D::SBPLPathPlanning()
 {
-    if (mvStartG.size() == 2 && mvTargetG.size() == 2)
+    bool bFindPath = false;
+    if (mvStartG.size() != 2 || mvTargetG.size() != 2)
     {
-        glPointSize(mPointSize);
-        glBegin(GL_POINTS);
-        glColor3f(1.0, 0.0, 0.0);
-        glVertex3f(mvStartW[0], 5, mvStartW[1]);
-        glVertex3f(mvTargetW[0], 5, mvTargetW[1]);
-        glEnd();
-        glPointSize(mPointSize);
-        glBegin(GL_POINTS);
-        glColor3f(1.0, 1.0, 0.0);
-        glVertex3f(mvTmpStartW[0], 5, mvTmpStartW[1]);
-        glVertex3f(mvTmpTargetW[0], 5, mvTmpTargetW[1]);
-        glEnd();
+        std::cout << "\x1B[31m" << "ERROR: start and target vectors passed to path planning have wrong dimensions"
+                  << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    GenerateOccupancyMap();
+
+    if (!GetClosestFreePoint(mvStartG, 80, mvCandidatesValidStart))
+    {
+        std::cout << "Cannot find an obstacle-free place near start point" << std::endl;
+        return false;
+    }
+    if (!GetClosestFreePoint(mvTargetG, 80, mvCandidatesValidTarget))
+    {
+        std::cout << "Cannot find an obstacle-free place near target point" << std::endl;
+        return false;
+    }
+    GridToWorld(mvStartG, mvTmpStartW);
+    GridToWorld(mvTargetG, mvTmpTargetW);
+
+    double allocated_time_secs = 100.0; // in seconds
+    double initialEpsilon = 3.0;
+    MDPConfig MDPCfg;
+    bool bsearchuntilfirstsolution = false;
+    bool bforwardsearch = true;
+
+    // Initialize Environment (should be called before initializing anything else)
+    EnvironmentNAV2D environment_nav2D;
+    if (!environment_nav2D.InitializeEnvORBSLAM2(mObstacles,mvStartG, mvTargetG, 1)) {
+        throw SBPL_Exception("ERROR: InitializeEnv failed");
     }
 
-    glPointSize(mPointSize);
-    glBegin(GL_POINTS);
-    glColor3f(0.8, 0.5, 0.4);
-    for (int k = 0; k < mvCandidatesValidStart.size(); k++)
-    {
-        std::vector<float> point;
-        std::vector<int> tmp = {mvCandidatesValidStart[k].second[1], mvCandidatesValidStart[k].second[0]};
-        GridToWorld(tmp, point);
-        glVertex3f(point[0], 5, point[1]);
+    // Initialize MDP Info
+    if (!environment_nav2D.InitializeMDPCfg(&MDPCfg)) {
+        throw SBPL_Exception("ERROR: InitializeMDPCfg failed");
     }
-    glEnd();
-    glBegin(GL_POINTS);
-    glColor3f(1.0, 0.5, 0.5);
-    for (int k = 0; k < mvCandidatesValidTarget.size(); k++)
-    {
-        std::vector<float> point;
-        std::vector<int> tmp = {mvCandidatesValidTarget[k].second[1], mvCandidatesValidTarget[k].second[0]};
-        GridToWorld(tmp, point);
-        glVertex3f(point[0], 5, point[1]);
-    }
-    glEnd();
 
-    glLineWidth(mLineWidth);
-    glColor3f(0.0, 1.0, 0.0);
-    glBegin(GL_LINES);
-    if (mpSolution->size() > 0)
+    // plan a path
+    std::vector<int> solution_stateIDs_V;
+    SBPLPlanner* planner;
+    if (msPlanner == "adstar")
     {
-        for (int i = 0; i < static_cast<int> (mpSolution->size()) - 1; i++)
+        planner = new ADPlanner(&environment_nav2D, bforwardsearch);
+    }
+    else if (msPlanner == "arastar")
+    {
+        planner = new ARAPlanner(&environment_nav2D, bforwardsearch);
+    }
+    else
+    {
+        std::cout << "\x1B[31m" << "Input planner is not adstar or arastar: " << planner
+                  << "\x1B[0m" << std::endl;
+        std::cout << "Using adstar instead ..." << std::endl;
+        planner = new ADPlanner(&environment_nav2D, bforwardsearch);
+    }
+
+    // set search mode
+    planner->set_search_mode(bsearchuntilfirstsolution);
+
+    if (planner->set_start(MDPCfg.startstateid) == 0) {
+        throw SBPL_Exception("ERROR: failed to set start state");
+    }
+
+    if (planner->set_goal(MDPCfg.goalstateid) == 0) {
+        throw SBPL_Exception("ERROR: failed to set goal state");
+    }
+
+    planner->set_initialsolution_eps(initialEpsilon);
+
+    printf("start planning...\n");
+    int bRet = planner->replan(allocated_time_secs, &solution_stateIDs_V);
+    printf("done planning\n");
+    std::cout << "size of solution=" << solution_stateIDs_V.size() << std::endl;
+
+    if (mpSolution)
+    {
+        mpSolution->clear();
+    }
+    if (solution_stateIDs_V.size() <= 0)
+    {
+        std::cout << "Cannot find a path ... " << std::endl;
+    }
+    else
+    {
+        for (unsigned int i = 0; i < solution_stateIDs_V.size(); i++)
         {
-            glVertex3f((*mpSolution)[i][0], 5.0, (*mpSolution)[i][1]);
-            glVertex3f((*mpSolution)[i + 1][0], 5.0, (*mpSolution)[i + 1][1]);
+            std::vector<int> pointInGrid(2, 0);
+            environment_nav2D.GetCoordFromState(solution_stateIDs_V[i], pointInGrid[0], pointInGrid[1]);
+            std::vector<float> pointInWorld;
+            GridToWorld(pointInGrid, pointInWorld);
+            mpSolution->push_back(pointInWorld);
         }
+        bFindPath = true;
+        std::cout << "Find a path ..." << std::endl;
     }
 
-    glEnd();
+    delete planner;
 
-    {
-        glPushAttrib(GL_ENABLE_BIT);
-        if (mpSolution->size() > 0 && mvStartG.size() == 2 && mvTargetG.size() == 2)
-        {
-            glLineStipple(2, 0x00FF);
-            glEnable(GL_LINE_STIPPLE);
-            glLineWidth(mLineWidth);
-            glColor3f(1.0, 1.0, 0.0);
-            glBegin(GL_LINES);
-            glVertex3f(mvStartW[0], 5.0, mvStartW[1]);
-            glVertex3f(mpSolution->front()[0], 5.0, mpSolution->front()[1]);
-            glEnd();
-            glBegin(GL_LINES);
-            glVertex3f(mvTargetW[0], 5.0, mvTargetW[1]);
-            glVertex3f(mpSolution->back()[0], 5.0, mpSolution->back()[1]);
-            glEnd();
-            glPopAttrib();
-        }
-    }
-
-    glPointSize(mPointSize / 6.0);
-//    glBegin(GL_POINTS);
-//    glColor3f(0.0, 0.0, 1.0);
-//    for (int i = 0; i < mObstacles.size(); i++)
-//    {
-//        for (int j = 0; j < mObstacles[0].size(); j++)
-//        {
-//            if (mObstacles[i][j] == 1)
-//            {
-//                std::vector<float> tmpPoint;
-//                std::vector<int> tmpSrc = {j, i};
-//                GridToWorld(tmpSrc, tmpPoint);
-//                glVertex3f(tmpPoint[0], 5, tmpPoint[1]);
-//            }
-//        }
-//    }
-//    glEnd();
-    glBegin(GL_POINTS);
-    glColor3f(1.0, 0.0, 0.0);
-    for (int i = 0; i < obstacles.size(); i++)
-    {
-        glVertex3f(obstacles[i][0], 5, obstacles[i][1]);
-    }
-    glEnd();
-
+    return bFindPath;
 }
+
 bool PathPlanning2D::OmplPathPlanning()
 {
     bool bFindPath = false;
@@ -339,6 +389,7 @@ bool PathPlanning2D::OmplPathPlanning()
     }
     return bFindPath;
 }
+
 
 //Deprecated
 void PathPlanning2D::SimplePathPlanning()
@@ -793,6 +844,7 @@ void PathPlanning2D::GenerateOccupancyMap()
 //            }
 //        }
 //    }
+    double radiusSquared = pow(mfObstacleWidth, 2.0);
     for (auto p : mCloud->points) {
         int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
         int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
@@ -800,13 +852,21 @@ void PathPlanning2D::GenerateOccupancyMap()
         {
             mObstaclesHeight[nTmpY][nTmpX] = -p.y;
         }
+        if (nTmpX >= 0 && nTmpX < mnSizeX && nTmpY >= 0 && nTmpY < mnSizeY)
+        {
+            mObstacles[nTmpY][nTmpX] = 1;
+        }
+
         for (int i = nTmpX - mfObstacleWidth; i <= nTmpX + mfObstacleWidth; i++)
         {
             for (int j = nTmpY - mfObstacleWidth; j <= nTmpY + mfObstacleWidth; j++)
             {
                 if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY)
                 {
-                    mObstacles[j][i] = 1;
+                    if (pow(i - nTmpX, 2.0) + pow(j - nTmpY, 2.0) <= radiusSquared)
+                    {
+                        mObstacles[j][i] = 1;
+                    }
 
                 }
 
@@ -838,6 +898,29 @@ void PathPlanning2D::GenerateOccupancyMap()
 //            }
 //        }
     }
+//    cv::Mat outputImg(mObstacles.size(), mObstacles[0].size(), CV_8UC3 );
+//    for (int i = 0; i < mObstacles.size(); i++)
+//    {
+//        for (int j = 0; j < mObstacles[0].size(); j++)
+//        {
+//            if (mObstacles[i][j] == 1)
+//            {
+//                outputImg.at<cv::Vec3b>(i, j)[0] = 255;
+//                outputImg.at<cv::Vec3b>(i, j)[1] = 255;
+//                outputImg.at<cv::Vec3b>(i, j)[2] = 255;
+//            }
+//            else
+//            {
+//                outputImg.at<cv::Vec3b>(i, j)[0] = 0;
+//                outputImg.at<cv::Vec3b>(i, j)[1] = 0;
+//                outputImg.at<cv::Vec3b>(i, j)[2] = 0;
+//            }
+//
+//
+//        }
+//    }
+//    cv::imwrite("obastacle.png", outputImg);
+
 }
 void PathPlanning2D::WorldToGrid(std::vector<float> &input, std::vector<int> &output)
 {

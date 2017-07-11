@@ -29,7 +29,8 @@ struct RRTNode
 class PathPlanning2D
 {
 public:
-    PathPlanning2D(std::string planner, float pointSize, float lineWidth);
+    PathPlanning2D(std::string planner, float pointSize, float lineWidth,
+                   float obstacleWidth, float leafSize);
     bool PlanPath(std::vector<float> &start,
                   std::vector<float> &target,
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
@@ -37,7 +38,6 @@ public:
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
     void ShowPlannedPath();
-    void ShowPlannedPath(std::vector<std::vector<float> > &obstacles);
 
     void reset();
 
@@ -50,6 +50,8 @@ private:
     void AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
     bool OmplPathPlanning();
+
+    bool SBPLPathPlanning();
 
 //    Deprecated
     void SimplePathPlanning();
@@ -92,6 +94,7 @@ private:
     int mnSizeX;
     int mnSizeY;
     float mfObstacleWidth;
+    bool mbSBPLPathPlan;
     std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidStart;
     std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidTarget;
 

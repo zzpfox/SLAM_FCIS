@@ -16,18 +16,20 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpMapDrawer(pMapDrawer),
     mfcLeafSize(0.025),
     mfObstacleWidth(5.0),
-    mfHeightUpperBound(0.55),
+    mfHeightUpperBound(0.75),
     mfHeightLowerBound(-1.0)
 {
     mvBounds = std::vector<float> (4, 0.0);
-    std::string planner = static_cast<std::string> (fSettings["PathPlanningPlanner"]);
+    std::string planner = static_cast<std::string> (fSettings["AutoBuildMapPathPlanner"]);
     mLineWidth = fSettings["Viewer.KeyFrameLineWidth"];
     mPointSize = fSettings["Viewer.PointSize"];
     mLineWidth *= 4.0;
     mPointSize *= 6.0;
     mptPathPlanning = std::make_shared<PathPlanning2D> (planner,
                                                         mPointSize,
-                                                        mLineWidth);
+                                                        mLineWidth,
+                                                        mfObstacleWidth,
+                                                        mfcLeafSize);
 }
 
 void AutoBuildMap::Run()
@@ -44,11 +46,21 @@ void AutoBuildMap::Run()
     {
         if(NeedReplanPath())
         {
-            if(!PlanPath())
+            int count = 0;
+            while (!PlanPath())
             {
-                SaveMap();
-                break;
+                count++;
+                if (count >= 5)
+                {
+                    SaveMap();
+                    break;
+                }
             }
+//            if(!PlanPath())
+//            {
+//                SaveMap();
+//                break;
+//            }
         }
     }
     std::cout << "Stop building map automatically" << std::endl;
@@ -106,7 +118,6 @@ void AutoBuildMap::Show2DMap()
         }
     }
 
-
     for (int i = 0; i < mObstaclesCopy.size(); i++)
     {
         for (int j = 0; j < mObstaclesCopy[0].size(); j++)
@@ -115,23 +126,13 @@ void AutoBuildMap::Show2DMap()
             {
                 std::vector<float> tmpPoint;
                 std::vector<int> tmpSrc = {j, i};
-                GridToCamera(tmpSrc, tmpPoint);
-                Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
-                cv::cv2eigen(Twc,ETwc);
-                Eigen::Vector4f EX3Dc;
-                EX3Dc << tmpPoint[0], 0, tmpPoint[1], 1.0;
-                Eigen::Vector4f EX3Dw = ETwc * EX3Dc;
-//                std::vector<float> output;
-//                output.push_back(EX3Dw[0]);
-//                output.push_back(EX3Dw[2]);
-//                obstacles.push_back(output);
-                glVertex3f(EX3Dw[0], 5, EX3Dw[2]);
+                GridToWorld(tmpSrc, tmpPoint);
+                glVertex3f(tmpPoint[0], 5, tmpPoint[1]);
             }
         }
     }
     glEnd();
     mptPathPlanning->ShowPlannedPath();
-//    mptPathPlanning->ShowPlannedPath(obstacles);
 
 }
 
@@ -143,7 +144,6 @@ void AutoBuildMap::UpdateSolution(std::shared_ptr<std::vector<std::vector<float>
 bool AutoBuildMap::NeedReplanPath()
 {
     float fCameraCenterX = 0;
-    float fCameraCenterY = 0;
     float fCameraCenterZ = 0;
 
     cv::Mat depthIm;
@@ -157,7 +157,6 @@ bool AutoBuildMap::NeedReplanPath()
         }
         float *it =  mCameraCenter.ptr<float>(0);
         fCameraCenterX = it[0];
-        fCameraCenterY = it[1];
         fCameraCenterZ = it[2];
 
         if (mCurrentFrameImDepth.empty() || mTwc.empty())
@@ -172,8 +171,6 @@ bool AutoBuildMap::NeedReplanPath()
         }
     }
     std::vector<float> vStart = (*mpSolution)[0];
-    vStart[0] -= fCameraCenterX;
-    vStart[1] -= fCameraCenterZ;
     std::vector<float> vTargetW = mptPathPlanning->GetTargetW();
     float fToTargetX = vTargetW[0] - fCameraCenterX;
     float fToTargetZ = vTargetW[1] - fCameraCenterZ;
@@ -186,7 +183,7 @@ bool AutoBuildMap::NeedReplanPath()
     }
     pcl::PointCloud<pcl::PointXYZ>::Ptr pCurrentFrameCloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointXYZ point;
-    int imgStep = 3;
+    int imgStep = 2;
     Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
     cv::cv2eigen(Twc,ETwc);
     for (int r = 0; r < depthIm.rows; r += imgStep) {
@@ -207,10 +204,9 @@ bool AutoBuildMap::NeedReplanPath()
                 zc = X3Dw[2];
                 if (yc <= mfHeightUpperBound && yc >= mfHeightLowerBound)
                 {
-                    // store the coordinates relative to the camera center
-                    point.x = xc - fCameraCenterX;
-                    point.y = yc - fCameraCenterY;
-                    point.z = zc - fCameraCenterX;
+                    point.x = xc;
+                    point.y = yc;
+                    point.z = zc;
                     pCurrentFrameCloud->points.push_back(point);
                 }
             }
@@ -222,6 +218,7 @@ bool AutoBuildMap::NeedReplanPath()
     {
         unique_lock<mutex> lock(mMutexObstacle);
         mObstacles = std::vector<std::vector<int> > (mnSizeY, std::vector<int> (mnSizeX, 0));
+        double radiusSquared = pow(mfObstacleWidth, 2.0);
         for (auto p : pCurrentFrameCloud->points) {
             int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
             int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
@@ -231,7 +228,11 @@ bool AutoBuildMap::NeedReplanPath()
                 {
                     if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY)
                     {
-                        mObstacles[j][i] = 1;
+                        if (pow(i - nTmpX, 2.0) + pow(j - nTmpY, 2.0) <= radiusSquared)
+                        {
+                            mObstacles[j][i] = 1;
+                        }
+
                     }
                 }
             }
@@ -241,18 +242,9 @@ bool AutoBuildMap::NeedReplanPath()
     for (std::vector<std::vector<float> >::iterator it = mpSolution->begin();
         it != mpSolution->end(); it++)
     {
-        float deltaX = (*it)[0] - fCameraCenterX;
-        float deltaZ = (*it)[1] - fCameraCenterZ;
-//        std::cout << "loop over solution" << std::endl;
-//        if (deltaX <= mvBounds[0] || deltaX >= mvBounds[1] ||
-//            deltaZ <= mvBounds[2] || deltaZ >= mvBounds[3])
-//        {
-//            std::cout << "out of bounds" << std::endl;
-//            break;
-//        }
         std::vector<int> solutionInGrid;
-        std::vector<float> solutionInCamera = {deltaX, deltaZ};
-        CameraToGrid(solutionInCamera, solutionInGrid);
+        std::vector<float> solutionInWorld = {(*it)[0], (*it)[1]};
+        WorldToGrid(solutionInWorld, solutionInGrid);
         if (solutionInGrid[0] >= 0 && solutionInGrid[0] < mObstacles[0].size() &&
             solutionInGrid[1] >= 0 && solutionInGrid[1] < mObstacles.size())
         {
@@ -263,17 +255,12 @@ bool AutoBuildMap::NeedReplanPath()
         }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
-//    std::cout << " walk along the solution" << std::endl;
     return false;
 }
 
 void AutoBuildMap::SetCurrentFrame(Frame &m)
 {
-    std::cout << "Setting frame: " << std::endl;
     unique_lock<mutex> lock(mMutexFrame);
-//    unique_lock<mutex> lockDepth(mMutexDepth);
-//    unique_lock<mutex> lockCC(mMutexCameraCenter);
-//    unique_lock<mutex> lockTwc(mMutexTwc);
     mCurrentFrameImDepth = m.mImDepth.clone();
     mCameraCenter = m.GetCameraCenter();
     mTwc = m.GetPoseInverse();
@@ -358,14 +345,14 @@ void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::
     }
 }
 
-void AutoBuildMap::CameraToGrid(std::vector<float> &input, std::vector<int> &output)
+void AutoBuildMap::WorldToGrid(std::vector<float> &input, std::vector<int> &output)
 {
     output.resize(2, 0);
     output[0] = static_cast<int> ((input[0] - mvBounds[0]) / mfcLeafSize);
     output[1] = static_cast<int> ((input[1] - mvBounds[2]) / mfcLeafSize);
 }
 
-void AutoBuildMap::GridToCamera(std::vector<int> &input, std::vector<float> &output)
+void AutoBuildMap::GridToWorld(std::vector<int> &input, std::vector<float> &output)
 {
     output.resize(2, 0);
     output[0] = input[0] * mfcLeafSize + mvBounds[0];

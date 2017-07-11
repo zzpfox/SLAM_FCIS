@@ -26,8 +26,8 @@ public:
     void Run();
     void Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud0,
                      std::vector<float> &vStart);
-    void CameraToGrid(std::vector<float> &input, std::vector<int> &output);
-    void GridToCamera(std::vector<int> &input, std::vector<float> &output);
+    void WorldToGrid(std::vector<float> &input, std::vector<int> &output);
+    void GridToWorld(std::vector<int> &input, std::vector<float> &output);
     void ShortenSolution();
     void SetCurrentFrame(Frame &m);
 

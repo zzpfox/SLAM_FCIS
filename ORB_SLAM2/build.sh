@@ -18,6 +18,9 @@ if ! [ -z $CLEAN ]; then
     cd ../g2o
     echo "Removing build folder in Thirdparty/g2o"
     rm -rf build
+    cd ../sbpl
+    echo "Removing build folder in Thirdparty/sbpl"
+    rm -rf build
     cd ../../
     echo "Removing build folder in ."
     rm -rf build
@@ -39,6 +42,15 @@ mkdir build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j8
+
+
+cd ../../sbpl
+echo "Configuring and building Thirdparty/sbpl ..."
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j8
+
 
 cd ../../../
 

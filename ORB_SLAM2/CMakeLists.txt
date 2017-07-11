@@ -44,6 +44,7 @@ find_package(OMPL QUIET)
 include_directories(
         ${PROJECT_SOURCE_DIR}
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/Thirdparty/sbpl/src/include
         ${EIGEN3_INCLUDE_DIR}
         ${Pangolin_INCLUDE_DIRS}
         ${OCTOMAP_INCLUDE_DIRS}
@@ -78,7 +79,8 @@ add_library(${PROJECT_NAME} SHARED
         src/Communication.cc
         src/Serialization.cc
         src/OmplPathPlanning.cc
-        src/PathPlanning.cc)
+        src/PathPlanning.cc
+        src/AutoBuildMap.cc)
 
 target_link_libraries(${PROJECT_NAME}
         ${OpenCV_LIBS}
@@ -86,6 +88,7 @@ target_link_libraries(${PROJECT_NAME}
         ${Pangolin_LIBRARIES}
         ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
         ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+        ${PROJECT_SOURCE_DIR}/Thirdparty/sbpl/build/libsbpl.so
         ${PCL_LIBRARIES}
         ${OCTOMAP_LIBRARIES}
         ${OMPL_LIBRARIES}
