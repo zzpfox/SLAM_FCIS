@@ -31,7 +31,7 @@
 #include <octomap/octomap.h>
 #include <octomap/ColorOcTree.h>
 #include <pcl/filters/random_sample.h>
-
+#include <algorithm>
 #include <sstream>
 #include <iomanip>
 #include <limits>
@@ -85,7 +85,7 @@ void MapDrawer::DrawPointCloud()
     glEnd();
 }
 
-void MapDrawer::CalPointCloud(float sampleRatio)
+void MapDrawer::CalPointCloud()
 {
     std::chrono::time_point<std::chrono::system_clock> start, start2;
     std::chrono::time_point<std::chrono::system_clock> end;
@@ -122,7 +122,7 @@ void MapDrawer::CalPointCloud(float sampleRatio)
         unique_lock<mutex> lock(mMutexMCloud);
         if (cloud->points.size() > 0)
         {
-            FilterPointCloud(cloud, mCloud, sampleRatio);
+            FilterPointCloud(cloud, mCloud);
         }
 
 //        mCloud = cloud;
@@ -345,35 +345,71 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 
 void
 MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                            pcl::PointCloud<pcl::PointXYZ>::Ptr output,
-                            float sampleRatio)
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
     cout << "Original Cloud Size:" << cloud->points.size() << endl;
+//    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
 
-    int n_points = cloud->points.size() * sampleRatio;
-    pcl::RandomSample<pcl::PointXYZ> randomFilter;
-    randomFilter.setSample(n_points);
-    randomFilter.setInputCloud(cloud);
-    randomFilter.filter(*cloudRandomFilter);
-    cout << "Cloud Size After Random Sample Filter:" << cloudRandomFilter->points.size() << endl;
+//    int n_points = cloud->points.size() * sampleRatio;
+//    pcl::RandomSample<pcl::PointXYZ> randomFilter;
+//    randomFilter.setSample(n_points);
+//    randomFilter.setInputCloud(cloud);
+//    randomFilter.filter(*cloudRandomFilter);
+//    cout << "Cloud Size After Random Sample Filter:" << cloudRandomFilter->points.size() << endl;
 
-//    // voxel filter
-//    pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
-//    voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
-//    voxelFilter.setInputCloud(cloud);
-//    voxelFilter.filter(*cloudVoxel);
-//    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
+
+    // voxel filter
+    pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
+    voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
+    voxelFilter.setInputCloud(cloud);
+    voxelFilter.filter(*cloudVoxel);
+    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
+
+    std::vector<std::vector<float> > vXYZCoords(3, std::vector<float> ());
+    std::vector<std::vector<float> > vIQRBounds(3, std::vector<float> (2, 0));
+    for (auto &p : cloudVoxel->points)
+    {
+        vXYZCoords[0].push_back(p.x);
+        vXYZCoords[1].push_back(p.y);
+        vXYZCoords[2].push_back(p.z);
+    }
+    for (int i = 0; i < vXYZCoords.size(); i++)
+    {
+        std::vector<float> &vCoords = vXYZCoords[i];
+        auto const Q1 = vCoords.size() / 4;
+        auto const Q3 = vCoords.size() * 3 / 4;
+        std::nth_element(vCoords.begin(),          vCoords.begin() + Q1, vCoords.end());
+        std::nth_element(vCoords.begin() + Q1 + 1, vCoords.begin() + Q3, vCoords.end());
+        float q25 = *(vCoords.begin() + Q1);
+        float q75 = *(vCoords.begin() + Q3);
+        float iqr = q75 - q25;
+        float lowerBound = q25 - iqr * 1.5;
+        float upperBound = q75 + iqr * 1.5;
+        vIQRBounds[i][0] = lowerBound;
+        vIQRBounds[i][1] = upperBound;
+    }
+    cloudIQRFilter->points.clear();
+    for (auto &p : cloudVoxel->points)
+    {
+        if (p.x >= vIQRBounds[0][0] && p.x <= vIQRBounds[0][1] &&
+            p.y >= vIQRBounds[1][0] && p.y <= vIQRBounds[1][1] &&
+            p.z >= vIQRBounds[2][0] && p.z <= vIQRBounds[2][1])
+        {
+            cloudIQRFilter->points.push_back(p);
+        }
+    }
+    cout << "Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
 
     // statistical removal
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-    sor.setMeanK(50);
-    sor.setStddevMulThresh(1.0);
-    sor.setInputCloud(cloudRandomFilter);
+    sor.setMeanK(8);
+    sor.setStddevMulThresh(0.2);
+    sor.setInputCloud(cloudIQRFilter);
     sor.filter(*output);
-
     cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
+
 }
 
 void MapDrawer::DrawMapPoints()

@@ -107,7 +107,7 @@ KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame
         const float *itX = smpMap->mLookupX.ptr<float>();
         for (size_t c = 0; c < (size_t) F.mImDepth.cols; c += imgStep, itD += imgStep, itX += imgStep) {
             float depthValue = *itD;
-            if (depthValue > 0.1 && depthValue < 12.0) {
+            if (depthValue > 0.1 && depthValue < 10.0) {
                 float zc = depthValue;
                 float xc = *itX * depthValue;
                 float yc = y * depthValue;

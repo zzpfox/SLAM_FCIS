@@ -76,7 +76,7 @@ void AutoBuildMap::SaveMap()
 bool AutoBuildMap::PlanPath()
 {
     std::cout << "Planning a new path ... " << std::endl;
-    mpMapDrawer->CalPointCloud(0.1);
+    mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
     {
