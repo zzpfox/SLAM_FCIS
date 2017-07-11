@@ -113,6 +113,7 @@ bool PathPlanning2D::PlanPath(std::vector<float> &start,
     }
     UpdatePointCloud(cloud);
     mvStartW = start;
+    mvTargetW.clear();
     Get2DBounds();
     mvTargetW.resize(2, 0);
     mvTargetW[0] = (mvBounds[0] + mvBounds[1]) / 2.0;
@@ -146,7 +147,10 @@ void PathPlanning2D::ShowPlannedPath()
         glVertex3f(mvStartW[0], 5, mvStartW[1]);
         glVertex3f(mvTargetW[0], 5, mvTargetW[1]);
         glEnd();
-        glPointSize(mPointSize);
+
+    }
+    if (mvTmpStartW.size() == 2 && mvTmpTargetW.size() == 2)
+    {
         glBegin(GL_POINTS);
         glColor3f(1.0, 1.0, 0.0);
         glVertex3f(mvTmpStartW[0], 5, mvTmpStartW[1]);
@@ -154,7 +158,6 @@ void PathPlanning2D::ShowPlannedPath()
         glEnd();
     }
 
-    glPointSize(mPointSize);
     glBegin(GL_POINTS);
     glColor3f(0.8, 0.5, 0.4);
     for (int k = 0; k < mvCandidatesValidStart.size(); k++)
@@ -302,9 +305,7 @@ bool PathPlanning2D::SBPLPathPlanning()
 
     planner->set_initialsolution_eps(initialEpsilon);
 
-    printf("start planning...\n");
     int bRet = planner->replan(allocated_time_secs, &solution_stateIDs_V);
-    printf("done planning\n");
     std::cout << "size of solution=" << solution_stateIDs_V.size() << std::endl;
 
     if (mpSolution)

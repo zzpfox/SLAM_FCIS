@@ -36,6 +36,8 @@
 namespace ORB_SLAM2
 {
 
+class AutoBuildMap;
+
 class Tracking;
 
 class LocalMapping;
@@ -151,6 +153,8 @@ protected:
     bool mbFixScale;
 
     bool mnFullBAIdx;
+
+    friend class AutoBuildMap;
 };
 
 } //namespace ORB_SLAM

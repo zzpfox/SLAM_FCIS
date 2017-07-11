@@ -99,7 +99,7 @@ void MapDrawer::CalPointCloud()
     for (int j = 0; j < kFNum; j += sampleFrequency) {
         sampledVPKFs.push_back(vpKFs[j]);
     }
-    int numThreads = 6;
+    int numThreads = 2;
     std::thread threads[numThreads];
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds;
     for (int i = 0; i < numThreads; i++)
@@ -109,7 +109,7 @@ void MapDrawer::CalPointCloud()
     }
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), clouds[i], i,
-                                 numThreads, 0.75, -1.0);
+                                 numThreads, 0.60, -0.60);
     }
     for (auto &th : threads) {
         th.join();
@@ -127,10 +127,10 @@ void MapDrawer::CalPointCloud()
 
 //        mCloud = cloud;
     }
-    if (mpThreadOctomap) {
-        mpThreadOctomap->join();
-    }
-    mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
+//    if (mpThreadOctomap) {
+//        mpThreadOctomap->join();
+//    }
+//    mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
 
     end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;

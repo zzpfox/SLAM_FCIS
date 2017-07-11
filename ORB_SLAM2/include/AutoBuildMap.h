@@ -24,6 +24,7 @@ public:
     void SaveMap();
     void CalGridSize();
     void Run();
+    bool GoToStartPosition();
     void Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud0,
                      std::vector<float> &vStart);
     void WorldToGrid(std::vector<float> &input, std::vector<int> &output);

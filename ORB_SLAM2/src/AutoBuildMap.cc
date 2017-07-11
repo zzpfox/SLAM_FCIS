@@ -16,8 +16,8 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpMapDrawer(pMapDrawer),
     mfcLeafSize(0.025),
     mfObstacleWidth(5.0),
-    mfHeightUpperBound(0.75),
-    mfHeightLowerBound(-1.0)
+    mfHeightUpperBound(0.6),
+    mfHeightLowerBound(-0.6)
 {
     mvBounds = std::vector<float> (4, 0.0);
     std::string planner = static_cast<std::string> (fSettings["AutoBuildMapPathPlanner"]);
@@ -41,8 +41,8 @@ void AutoBuildMap::Run()
     std::cout << "Start building map automatically" << std::endl;
     sleep(2);  //wait for some time to accumulate some keyframes
     PlanPath();
-
-    while(true)
+    bool bAutoDone = false;
+    while(!bAutoDone)
     {
         if(NeedReplanPath())
         {
@@ -50,9 +50,18 @@ void AutoBuildMap::Run()
             while (!PlanPath())
             {
                 count++;
-                if (count >= 5)
+                if (count >= 2)
                 {
+                    if (GoToStartPosition())
+                    {
+                        std::cout << "going back to starting position" << std::endl;
+                    }
+                    else
+                    {
+                        std::cout << "cannot go back to starting position" << std::endl;
+                    }
                     SaveMap();
+                    bAutoDone = true;
                     break;
                 }
             }
@@ -65,6 +74,42 @@ void AutoBuildMap::Run()
     }
     std::cout << "Stop building map automatically" << std::endl;
 
+}
+
+bool AutoBuildMap::GoToStartPosition()
+{
+    std::cout << "Planning a path to go back to starting position ... " << std::endl;
+    mpMapDrawer->CalPointCloud();
+    float fCameraCenterX = 0;
+    float fCameraCenterZ = 0;
+    {
+        unique_lock<mutex> lock(mMutexFrame);
+        if (mCameraCenter.total() != 3)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return false;
+        }
+        float *it =  mCameraCenter.ptr<float>(0);
+        fCameraCenterX = it[0];
+        fCameraCenterZ = it[2];
+    }
+    std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
+    std::vector<float> target = {0, 0};
+    bool bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
+    if (bFindPath)
+    {
+        UpdateSolution(mptPathPlanning->mpSolution);
+        // wait for global BA
+        while(!mpSystem->mpLoopCloser->mbRunningGBA)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        };
+        while(!mpSystem->mpLoopCloser->mbFinishedGBA)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        };
+    }
+    return bFindPath;
 }
 
 void AutoBuildMap::SaveMap()

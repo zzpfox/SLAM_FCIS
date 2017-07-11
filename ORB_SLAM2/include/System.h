@@ -195,6 +195,8 @@ private:
     std::mutex mMutexState;
 
     bool mbLoadMapSuccess;
+
+    friend class AutoBuildMap;
 };
 
 }// namespace ORB_SLAM
