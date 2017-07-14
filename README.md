@@ -23,4 +23,4 @@ After running, you can toggle `Show DenseMap` button to see the point cloud gene
 And `Show SegObjects` will show the objects' type and their corresponding positions in the keyframes in which they exist.
 
 ## Note
-Please refer to the [smartpointer](https://github.com/CTTC/SLAM_FCIS/tree/smartpointer) branch for ORB-SLAM2 with smart pointers used instead. And this branch also contains the code on how to save and reload map using boost serialization.
+Please refer to the [automap](https://github.com/taochenshh/SLAM_FCIS/tree/automap) branch for ORB-SLAM2 with capability to automatically explore the environment and build the map. And this branch also contains the code on how to save and reload map using boost serialization.
