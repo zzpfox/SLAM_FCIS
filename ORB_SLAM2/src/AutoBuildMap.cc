@@ -123,7 +123,7 @@ void AutoBuildMap::EnsureAllAreasChecked()
                     }
                 }
             }
-            mptPathPlanning->reset();
+            mptPathPlanning->reset(false);
             std::cout << "\x1B[32m" << " target[ " << target[0] << "  " << target[1] <<
                       " ] finished ..." << "\x1B[0m" << std::endl;
         }

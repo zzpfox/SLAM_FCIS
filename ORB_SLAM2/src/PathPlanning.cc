@@ -56,7 +56,7 @@ void PathPlanning2D::AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
     *mCloud += *cloud;
 }
 
-void PathPlanning2D::reset()
+void PathPlanning2D::reset(bool cleanOccupancyMap = true)
 {
     mvStartG.clear();
     mvStartW.clear();
@@ -73,9 +73,12 @@ void PathPlanning2D::reset()
     {
         mpSolution->clear();
     }
+    if (cleanOccupancyMap)
+    {
+        mObstacles.clear();
+        mObstaclesHeight.clear();
+    }
 
-    mObstacles.clear();
-    mObstaclesHeight.clear();
     mvBounds.clear();
     mvCandidatesValidStart.clear();
     mvCandidatesValidTarget.clear();

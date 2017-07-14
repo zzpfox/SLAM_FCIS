@@ -47,7 +47,7 @@ public:
 
     void ShowPlannedPath();
 
-    void reset();
+    void reset(bool cleanOccupancyMap = true);
 
     std::vector<float> GetTargetW();
 
