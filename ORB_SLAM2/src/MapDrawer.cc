@@ -44,7 +44,9 @@ namespace ORB_SLAM2
 std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
-      mCloud(new pcl::PointCloud<pcl::PointXYZ>())
+      mCloud(new pcl::PointCloud<pcl::PointXYZ>()),
+      mfHeightUpperBound(1.0),
+      mfHeightLowerBound(-0.2)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     if (!fSettings.isOpened())
@@ -65,7 +67,9 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
                                                       mPointSize * 6.0,
                                                       mKeyFrameLineWidth * 4.0,
                                                       5.0,
-                                                      0.025);
+                                                      0.025,
+                                                      mfHeightUpperBound,
+                                                      mfHeightLowerBound);
 }
 
 void MapDrawer::DrawPointCloud()
@@ -79,7 +83,10 @@ void MapDrawer::DrawPointCloud()
     glBegin(GL_POINTS);
     glColor3f(1.0, 0.0, 1.0);
     for (auto p : mCloud->points) {
-        glVertex3f(p.x, p.y, p.z);
+        if (p.y >= -mfHeightUpperBound && p.y <= 2.0)
+        {
+            glVertex3f(p.x, p.y, p.z);
+        }
     }
 
     glEnd();
@@ -87,7 +94,7 @@ void MapDrawer::DrawPointCloud()
 
 void MapDrawer::CalPointCloud()
 {
-    std::chrono::time_point<std::chrono::system_clock> start, start2;
+    std::chrono::time_point<std::chrono::system_clock> start;
     std::chrono::time_point<std::chrono::system_clock> end;
     start = std::chrono::system_clock::now();
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
@@ -109,7 +116,7 @@ void MapDrawer::CalPointCloud()
     }
     for (int i = 0; i < numThreads; i++) {
         threads[i] = std::thread(&MapDrawer::GeneratePointCloud, this, std::cref(sampledVPKFs), clouds[i], i,
-                                 numThreads, 0.60, -0.60);
+                                 numThreads);
     }
     for (auto &th : threads) {
         th.join();
@@ -135,7 +142,7 @@ void MapDrawer::CalPointCloud()
     end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
     std::cout << "Total Number of Points: " << mCloud->size() << std::endl;
-    std::cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
+    std::cout << "CalPointCloud Elapsed time: " << elapsed_seconds.count() << "s\n";
 }
 
 void MapDrawer::FindObjects()
@@ -206,6 +213,9 @@ void MapDrawer::FindObjects()
         std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
         mbFindObjCalPoints = false;
         mPathPlanning->PlanPath(start, target, mCloud);
+        std::vector<float> curr(2, 0);
+        std::vector<float> goal;
+        mPathPlanning->UnvisitedAreasToGo(curr, goal, mCloud);
     }
     mPathPlanning->ShowPlannedPath();
 }
@@ -213,9 +223,7 @@ void MapDrawer::FindObjects()
 void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                                    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                                    int begin,
-                                   int step,
-                                   float heightUpperBound,
-                                   float heightLowerBound)
+                                   int step)
 {
 
     int keyFrameNum = vpKFs.size();
@@ -264,13 +272,12 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
 //            yy = itY[0] * tmpPoint.x + itY[1] * tmpPoint.y + itY[2] * tmpPoint.z + itY[3];
 //            float *itZ =  Twc.ptr<float>(2);
 //            zz = itZ[0] * tmpPoint.x + itZ[1] * tmpPoint.y + itZ[2] * tmpPoint.z + itZ[3];
-            if (yy <= heightUpperBound && yy >= heightLowerBound) {
-                pcl::PointXYZ point;
-                point.x = xx;
-                point.y = yy;
-                point.z = zz;
-                cloud->points.push_back(point);
-            }
+            pcl::PointXYZ point;
+            point.x = xx;
+            point.y = yy;
+            point.z = zz;
+            cloud->points.push_back(point);
+
         }
 
 
@@ -347,7 +354,7 @@ void
 MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
-    cout << "Original Cloud Size:" << cloud->points.size() << endl;
+//    cout << "Original Cloud Size:" << cloud->points.size() << endl;
 //    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
@@ -365,7 +372,7 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
     voxelFilter.setInputCloud(cloud);
     voxelFilter.filter(*cloudVoxel);
-    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
+//    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
 
     std::vector<std::vector<float> > vXYZCoords(3, std::vector<float> ());
     std::vector<std::vector<float> > vIQRBounds(3, std::vector<float> (2, 0));
@@ -400,7 +407,7 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
             cloudIQRFilter->points.push_back(p);
         }
     }
-    cout << "Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
+//    cout << "Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
 
     // statistical removal
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
@@ -408,7 +415,7 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     sor.setStddevMulThresh(0.2);
     sor.setInputCloud(cloudIQRFilter);
     sor.filter(*output);
-    cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
+//    cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
 
 }
 

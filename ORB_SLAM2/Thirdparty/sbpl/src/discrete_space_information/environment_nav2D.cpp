@@ -647,9 +647,9 @@ void EnvironmentNAV2D::GetRandomNeighs(int stateID, std::vector<int>* NeighIDV, 
 void EnvironmentNAV2D::ComputeHeuristicValues()
 {
     //whatever necessary pre-computation of heuristic values is done here
-    SBPL_PRINTF("Precomputing heuristics...\n");
+    // SBPL_PRINTF("Precomputing heuristics...\n");
 
-    SBPL_PRINTF("done\n");
+    // SBPL_PRINTF("done\n");
 }
 
 //-----------interface with outside functions-----------------------------------
@@ -678,7 +678,6 @@ bool EnvironmentNAV2D::InitializeEnvORBSLAM2(std::vector<std::vector<int> > &env
     EnvNAV2DCfg.EnvWidth_c = env[0].size();
     EnvNAV2DCfg.EnvHeight_c = env.size();
     EnvNAV2DCfg.obsthresh = obsthresh;
-    SBPL_PRINTF("obsthresh = %d\n", EnvNAV2DCfg.obsthresh);
 
     EnvNAV2DCfg.StartX_c = start[0];
     EnvNAV2DCfg.StartY_c = start[1];
@@ -717,8 +716,8 @@ bool EnvironmentNAV2D::InitializeEnvORBSLAM2(std::vector<std::vector<int> > &env
 //            EnvNAV2DCfg.Grid2D[x][y] = env[y][x];
 //        }
 //    }
-    SBPL_PRINTF("start has cost=%d goal has cost=%d\n", EnvNAV2DCfg.Grid2D[EnvNAV2DCfg.StartX_c][EnvNAV2DCfg.StartY_c],
-                EnvNAV2DCfg.Grid2D[EnvNAV2DCfg.EndX_c][EnvNAV2DCfg.EndY_c]);
+    // SBPL_PRINTF("start has cost=%d goal has cost=%d\n", EnvNAV2DCfg.Grid2D[EnvNAV2DCfg.StartX_c][EnvNAV2DCfg.StartY_c],
+                // EnvNAV2DCfg.Grid2D[EnvNAV2DCfg.EndX_c][EnvNAV2DCfg.EndY_c]);
 
     InitGeneral();
 

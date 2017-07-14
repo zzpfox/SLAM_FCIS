@@ -3,6 +3,7 @@
 #include <pangolin/pangolin.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include <opencv2/opencv.hpp>
 #include <vector>
 #include <memory>
 #include <string>
@@ -30,12 +31,19 @@ class PathPlanning2D
 {
 public:
     PathPlanning2D(std::string planner, float pointSize, float lineWidth,
-                   float obstacleWidth, float leafSize);
+                   float obstacleWidth, float leafSize,
+                   float upperBound=0.5, float lowerBound=-0.5);
+
     bool PlanPath(std::vector<float> &start,
                   std::vector<float> &target,
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
     bool PlanPath(std::vector<float> &start,
                   pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
+    bool UnvisitedAreasToGo(std::vector<float> &currentPos,
+                            std::vector<float> &target,
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
     void ShowPlannedPath();
 
@@ -44,8 +52,10 @@ public:
     std::vector<float> GetTargetW();
 
     std::shared_ptr<std::vector<std::vector<float> > > mpSolution;
-private:
+
     void UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+private:
+
 
     void AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
@@ -77,6 +87,11 @@ private:
     void WorldToGrid(std::vector<float> &input, std::vector<int> &output);
     void GridToWorld(std::vector<int> &input, std::vector<float> &output);
 
+    void Convert2DVectorToMat(std::vector<std::vector<int> > &input,
+                              cv::Mat &output,
+                              bool reverseRow = true,
+                              bool saveImage = true);
+
     std::vector<int> mvStartG; //coordinate in grid
     std::vector<int> mvTargetG;
     std::vector<float> mvStartW; //coordinate in world
@@ -85,6 +100,7 @@ private:
     std::vector<float> mvTmpTargetW;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
     std::vector<std::vector<int> > mObstacles;
+    std::vector<std::vector<int> > mObstaclesSeenNum;
     std::vector<std::vector<float> > mObstaclesHeight;
     const float mfcLeafSize;
     std::vector<float> mvBounds;
@@ -97,6 +113,8 @@ private:
     bool mbSBPLPathPlan;
     std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidStart;
     std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidTarget;
+    float mfUpperBound;
+    float mfLowerBound;
 
 };
 

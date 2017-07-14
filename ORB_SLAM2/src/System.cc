@@ -611,9 +611,9 @@ void System::SaveMap()
             if (save == "y" || save == "yes")
             {
                 std::cout << "Saving the map ..." << std::endl;
-
-                std::ofstream os(msMapFileName);
+                sleep(1);
                 {
+                    std::ofstream os(msMapFileName);
                     boost::archive::binary_oarchive oa(os, boost::archive::no_header);
                     oa << mpMap;
                 }

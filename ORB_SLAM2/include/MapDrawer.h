@@ -52,9 +52,7 @@ public:
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                            int begin, int step,
-                            float heightUpperBound = 0.5,
-                            float heightLowerBound = -0.5);
+                            int begin, int step);
 
     void FindObjects();
 
@@ -120,6 +118,8 @@ private:
     float mPointSize;
     float mCameraSize;
     float mCameraLineWidth;
+    float mfHeightUpperBound;
+    float mfHeightLowerBound;
 
     cv::Mat mCameraPose;
 

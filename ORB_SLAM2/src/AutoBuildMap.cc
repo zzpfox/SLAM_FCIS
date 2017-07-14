@@ -15,9 +15,9 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpTracker(pTracking),
     mpMapDrawer(pMapDrawer),
     mfcLeafSize(0.025),
-    mfObstacleWidth(5.0),
-    mfHeightUpperBound(0.6),
-    mfHeightLowerBound(-0.6)
+    mfObstacleWidth(9.0),
+    mfHeightUpperBound(1.0),
+    mfHeightLowerBound(-0.2)
 {
     mvBounds = std::vector<float> (4, 0.0);
     std::string planner = static_cast<std::string> (fSettings["AutoBuildMapPathPlanner"]);
@@ -29,7 +29,9 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
                                                         mPointSize,
                                                         mLineWidth,
                                                         mfObstacleWidth,
-                                                        mfcLeafSize);
+                                                        mfcLeafSize,
+                                                        mfHeightUpperBound,
+                                                        mfHeightLowerBound);
 }
 
 void AutoBuildMap::Run()
@@ -52,6 +54,7 @@ void AutoBuildMap::Run()
                 count++;
                 if (count >= 2)
                 {
+                    EnsureAllAreasChecked();
                     if (GoToStartPosition())
                     {
                         std::cout << "going back to starting position" << std::endl;
@@ -72,13 +75,104 @@ void AutoBuildMap::Run()
 //            }
         }
     }
-    std::cout << "Stop building map automatically" << std::endl;
+    std::cout << "\x1B[36m" << "Stop building map automatically" << "\x1B[0m" << std::endl;
 
 }
 
+void AutoBuildMap::EnsureAllAreasChecked()
+{
+    std::cout << "\x1B[33m" << "Sweeping over blank areas ..." << "\x1B[0m" << std::endl;
+    float fCameraCenterX = 0;
+    float fCameraCenterZ = 0;
+    {
+        unique_lock<mutex> lock(mMutexFrame);
+        if (mCameraCenter.total() != 3)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return;
+        }
+        float *it =  mCameraCenter.ptr<float>(0);
+        fCameraCenterX = it[0];
+        fCameraCenterZ = it[2];
+    }
+    std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
+    std::vector<float> target;
+    int count = 0;
+    while(true)
+    {
+        std::cout << "\x1B[32m" << "calculating new target ..." << "\x1B[0m" << std::endl;
+        mpMapDrawer->CalPointCloud();
+        if (mptPathPlanning->UnvisitedAreasToGo(start, target, mpMapDrawer->mCloud))
+        {
+            std::cout << "\x1B[32m" << " new target is: " << target[0] << "  " << target[1]
+                      << "\x1B[0m" << std::endl;
+            if (PlanPath(target))
+            {
+                while(true)
+                {
+                    if (CloseToTarget(target))
+                    {
+                        break;
+                    }
+                    if(NeedReplanPath())
+                    {
+                        if (!PlanPath(target))
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            mptPathPlanning->reset();
+            std::cout << "\x1B[32m" << " target[ " << target[0] << "  " << target[1] <<
+                      " ] finished ..." << "\x1B[0m" << std::endl;
+        }
+        else
+        {
+            count++;
+            if (count > 2)
+            {
+                break;
+            }
+        }
+    }
+    std::cout << "\x1B[34m" << "All areas have been checked ..." << "\x1B[0m" << std::endl;
+}
+
+bool AutoBuildMap::CloseToTarget(std::vector<float> &target)
+{
+    float fCameraCenterX = 0;
+    float fCameraCenterZ = 0;
+    {
+        unique_lock<mutex> lock(mMutexFrame);
+        if (mCameraCenter.total() != 3)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return false;
+        }
+        float *it =  mCameraCenter.ptr<float>(0);
+        fCameraCenterX = it[0];
+        fCameraCenterZ = it[2];
+    }
+    float fToTargetX = target[0] - fCameraCenterX;
+    float fToTargetZ = target[1] - fCameraCenterZ;
+    float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
+    if (fToTargetDistanceSquared < 2.56) // if the camera is close to the target, replan
+    {
+        std::cout << "close to target " << std::endl;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+
 bool AutoBuildMap::GoToStartPosition()
 {
-    std::cout << "Planning a path to go back to starting position ... " << std::endl;
+    std::cout << "\x1B[32m" << "Planning a path to go back to starting position ... " <<
+              "\x1B[0m" << std::endl;
     mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
@@ -99,6 +193,10 @@ bool AutoBuildMap::GoToStartPosition()
     if (bFindPath)
     {
         UpdateSolution(mptPathPlanning->mpSolution);
+        while (!CloseToTarget(target))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
         // wait for global BA
         while(!mpSystem->mpLoopCloser->mbRunningGBA)
         {
@@ -137,6 +235,32 @@ bool AutoBuildMap::PlanPath()
     }
     std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
     bool bFindPath = mptPathPlanning->PlanPath(start, mpMapDrawer->mCloud);
+    if (bFindPath)
+    {
+        UpdateSolution(mptPathPlanning->mpSolution);
+    }
+    return bFindPath;
+}
+
+bool AutoBuildMap::PlanPath(std::vector<float> &target)
+{
+    std::cout << "Planning a new path ... " << std::endl;
+    mpMapDrawer->CalPointCloud();
+    float fCameraCenterX = 0;
+    float fCameraCenterZ = 0;
+    {
+        unique_lock<mutex> lock(mMutexFrame);
+        if (mCameraCenter.total() != 3)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return false;
+        }
+        float *it =  mCameraCenter.ptr<float>(0);
+        fCameraCenterX = it[0];
+        fCameraCenterZ = it[2];
+    }
+    std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
+    bool bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
     if (bFindPath)
     {
         UpdateSolution(mptPathPlanning->mpSolution);
@@ -247,7 +371,7 @@ bool AutoBuildMap::NeedReplanPath()
                 xc = X3Dw[0];
                 yc = X3Dw[1];  // y axis is facing downward!!
                 zc = X3Dw[2];
-                if (yc <= mfHeightUpperBound && yc >= mfHeightLowerBound)
+                if (yc >= -mfHeightUpperBound && yc <= -mfHeightLowerBound)
                 {
                     point.x = xc;
                     point.y = yc;

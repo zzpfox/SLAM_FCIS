@@ -20,11 +20,15 @@ public:
     void UpdateSolution(std::shared_ptr<std::vector<std::vector<float> > > &pSolution);
     bool NeedReplanPath();
     bool PlanPath();
+    bool PlanPath(std::vector<float> &target);
     void Show2DMap();
     void SaveMap();
     void CalGridSize();
     void Run();
+
+    bool CloseToTarget(std::vector<float> &target);
     bool GoToStartPosition();
+    void EnsureAllAreasChecked();
     void Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud0,
                      std::vector<float> &vStart);
     void WorldToGrid(std::vector<float> &input, std::vector<int> &output);

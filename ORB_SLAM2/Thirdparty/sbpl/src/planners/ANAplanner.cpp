@@ -992,13 +992,13 @@ bool anaPlanner::Search(anaSearchStateSpace_t* pSearchStateSpace, vector<int>& p
         ret = false;
     }
     else {
-        printf("solution is found\n");
+        // printf("solution is found\n");
         pathIds = GetSearchPath(pSearchStateSpace, solcost);
         ret = true;
     }
 
-    printf("total expands this call = %d, planning time = %.3f secs, solution cost=%d\n", searchexpands, (clock()
-        - TimeStarted) / ((double)CLOCKS_PER_SEC), solcost);
+    // printf("total expands this call = %d, planning time = %.3f secs, solution cost=%d\n", searchexpands, (clock()
+    //     - TimeStarted) / ((double)CLOCKS_PER_SEC), solcost);
 
     //fprintf(fStat, "%d %d\n", searchexpands, solcost);
 

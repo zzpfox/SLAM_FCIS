@@ -25,6 +25,7 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <thread>
 #include <boost/filesystem.hpp>
+#include <cmath>
 #include "ORBmatcher.h"
 #include "FrameDrawer.h"
 #include "Converter.h"
@@ -1199,7 +1200,11 @@ void Tracking::SaveSegResultToMap(const Client::ClsPosPairs &clsPosPairs, long u
             std::vector<double> Pc = poses[j];
             bool zeros = std::all_of(Pc.begin(), Pc.end(), [](double i){return i==0.0;});
             if (!zeros) {
-                objpos.addInstance(Pc);
+                bool notNans = std::all_of(Pc.begin(), Pc.end(), [](double i){return !(std::isnan(i));});
+                if (notNans)
+                {
+                    objpos.addInstance(Pc);
+                }
             }
         }
         if (objpos.Pcs.size() > 0)
