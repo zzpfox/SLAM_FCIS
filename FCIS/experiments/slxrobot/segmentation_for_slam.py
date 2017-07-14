@@ -89,15 +89,22 @@ def generate_point_cloud(depth, roimask, cod):
     return cloud_roi
 
 def cal_centroid(cloud):
+    # Mean Value
     # The following method takes less time than
     # np.mean(cloud, axis=0) or np.sum(cloud, axis=0)/length
-    length = cloud.shape[0]
-    if not length:
-        return np.zeros(3)
-    sum_x = np.sum(cloud[:, 0])
-    sum_y = np.sum(cloud[:, 1])
-    sum_z = np.sum(cloud[:, 2])
-    return np.asarray([sum_x, sum_y, sum_z]) / length
+    # length = cloud.shape[0]
+    # if not length:
+    #     return np.zeros(3)
+    # sum_x = np.sum(cloud[:, 0])
+    # sum_y = np.sum(cloud[:, 1])
+    # sum_z = np.sum(cloud[:, 2])
+    # return np.asarray([sum_x, sum_y, sum_z]) / length
+
+    # Median value
+    return np.median(cloud, axis=0)
+
+
+
 
 def get_predictor(sym, image, arg_params, aux_params):
     data = []
