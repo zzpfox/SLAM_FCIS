@@ -56,7 +56,7 @@ public:
 
     void FindObjects();
 
-    void RandomlyGetObjPose(std::string object,
+    bool RandomlyGetObjPose(std::string object,
                             std::vector<float> &output,
                             std::unordered_map<std::string,
                                                std::unordered_map<long unsigned int, ObjectPos> > &ObjectMap);

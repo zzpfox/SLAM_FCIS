@@ -54,8 +54,8 @@ std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
       mCloud(new pcl::PointCloud<pcl::PointXYZ>()),
-      mfHeightUpperBound(0.6),
-      mfHeightLowerBound(-2.0)
+      mfHeightUpperBound(1.0),
+      mfHeightLowerBound(-0.2)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     if (!fSettings.isOpened())
@@ -75,7 +75,7 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mPathPlanning = std::make_shared<PathPlanning2D> (planner,
                                                       mPointSize * 6.0,
                                                       mKeyFrameLineWidth * 4.0,
-                                                      16.0,
+                                                      12.0,
                                                       0.025,
                                                       mfHeightUpperBound,
                                                       mfHeightLowerBound);
@@ -163,6 +163,32 @@ void MapDrawer::FindObjects()
     {
         mPathPlanning->reset();
         CalPointCloud();
+
+        // get current camera center position
+        cv::Mat Rwc(3, 3, CV_32F);
+        cv::Mat twc(3, 1, CV_32F);
+        std::vector<float> start(2, 0);
+
+        if (!mCameraPose.empty())
+        {
+            unique_lock<mutex> lock(mMutexCamera);
+            Rwc = mCameraPose.rowRange(0, 3).colRange(0, 3).t();
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
+            cv::cv2eigen(Rwc, ERwc);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> Etcw;
+            cv::cv2eigen(mCameraPose.rowRange(0, 3).col(3), Etcw);
+            Eigen::Vector3f Etwc = -ERwc * Etcw;
+            cv::eigen2cv(Etwc, twc);
+            float *it = twc.ptr<float>(0);
+            start[0] = it[0];
+            start[1] = it[2];
+        }
+        else
+        {
+            std::cout << "Cannot locate the camera, assuming it's at the origin ..." << std::endl;
+        }
+
+
         auto objectMap = mpMap->mObjectMap;
         std::vector<std::string> objectLists;
         int maxObjectNameLen = 0;
@@ -187,38 +213,31 @@ void MapDrawer::FindObjects()
         }
         std::cout << std::endl;
         std::cout << "------------------------------------------" << std::endl;
-        std::vector<float> start(2, 0);
+
+
         std::vector<float> target(2, 0);
         srand(time(NULL));
         std::cin.clear();
-        std::cout << "\x1B[33m" << "Enter the Start Object " << "\x1B[0m" << std::endl;
         std::string object;
-        std::getline(std::cin, object);
-        std::cout << "Your input is: " << object << std::endl;
-        std::cin.clear();
-        if (objectMap.count(object) > 0)
-        {
-            RandomlyGetObjPose(object, start, objectMap);
-        }
-        else
-        {
-            std::cout << "Object does not exist" << std::endl
-                      <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
-            return;
-        }
-
         std::cout << "\x1B[33m" << "Enter the Target Object " << "\x1B[0m" << std::endl;
         std::getline(std::cin, object);
         std::cout << "Your input is: " << object << std::endl;
         std::cin.clear();
         if (objectMap.count(object) > 0)
         {
-            RandomlyGetObjPose(object, target, objectMap);
+            if(!RandomlyGetObjPose(object, target, objectMap))
+            {
+                std::cout << "Object does not exist" << std::endl
+                          <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+                mbFindObjCalPoints = false;
+                return;
+            }
         }
         else
         {
             std::cout << "Object does not exist" << std::endl
                       <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+            mbFindObjCalPoints = false;
             return;
         }
         std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
@@ -228,6 +247,78 @@ void MapDrawer::FindObjects()
     }
     mPathPlanning->ShowPlannedPath();
 }
+
+//void MapDrawer::FindObjects()
+//{
+//    if (mbFindObjCalPoints)
+//    {
+//        mPathPlanning->reset();
+//        CalPointCloud();
+//        auto objectMap = mpMap->mObjectMap;
+//        std::vector<std::string> objectLists;
+//        int maxObjectNameLen = 0;
+//        for (auto kv : objectMap)
+//        {
+//            if (kv.first.length() > maxObjectNameLen)
+//            {
+//                maxObjectNameLen = kv.first.size();
+//            }
+//            objectLists.push_back(kv.first);
+//        }
+//        std::cout << "==========================================" << std::endl;
+//        std::cout << "               Objects List               " << std::endl;
+//        std::cout << "------------------------------------------" << std::endl;
+//        for (int i = 0; i < objectLists.size(); i++)
+//        {
+//            if (i % 3 == 0 && i != 0)
+//            {
+//                std::cout << std::endl;
+//            }
+//            std::cout << std::setw(maxObjectNameLen + 1) << objectLists[i] << " ";
+//        }
+//        std::cout << std::endl;
+//        std::cout << "------------------------------------------" << std::endl;
+//        std::vector<float> start(2, 0);
+//        std::vector<float> target(2, 0);
+//        srand(time(NULL));
+//        std::cin.clear();
+//        std::cout << "\x1B[33m" << "Enter the Start Object " << "\x1B[0m" << std::endl;
+//        std::string object;
+//        std::getline(std::cin, object);
+//        std::cout << "Your input is: " << object << std::endl;
+//        std::cin.clear();
+//        if (objectMap.count(object) > 0)
+//        {
+//            RandomlyGetObjPose(object, start, objectMap);
+//        }
+//        else
+//        {
+//            std::cout << "Object does not exist" << std::endl
+//                      <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+//            return;
+//        }
+//
+//        std::cout << "\x1B[33m" << "Enter the Target Object " << "\x1B[0m" << std::endl;
+//        std::getline(std::cin, object);
+//        std::cout << "Your input is: " << object << std::endl;
+//        std::cin.clear();
+//        if (objectMap.count(object) > 0)
+//        {
+//            RandomlyGetObjPose(object, target, objectMap);
+//        }
+//        else
+//        {
+//            std::cout << "Object does not exist" << std::endl
+//                      <<"Please click \'Fetch Objects\' again to enter a valid object name" << std::endl;
+//            return;
+//        }
+//        std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
+//        std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
+//        mbFindObjCalPoints = false;
+//        mPathPlanning->PlanPath(start, target, mCloud);
+//    }
+//    mPathPlanning->ShowPlannedPath();
+//}
 
 void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
                                    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
@@ -844,7 +935,7 @@ void MapDrawer::CloseOctoMapThread()
 }
 
 
-void MapDrawer::RandomlyGetObjPose(std::string object,
+bool MapDrawer::RandomlyGetObjPose(std::string object,
                                    std::vector<float> &output,
                                    std::unordered_map<std::string,
                                                       std::unordered_map<long unsigned int, ObjectPos> > &objectMap)
@@ -862,7 +953,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
         if (count >= maxTrials)
         {
             std::cout << "\x1B[31m" << "Cannot find object [" << object << "]" << "\x1B[0m" << std::endl;
-            return;
+            return false;
         }
     }while(poses.size() <= 0);
     std::vector<double> dSelectedObj(3, 0.0);
@@ -874,7 +965,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
         if (count >= maxTrials)
         {
             std::cout << "Cannot find object [" << object << "]" << std::endl;
-            return;
+            return false;
         }
     }while(dSelectedObj[0] == 0.0 && dSelectedObj[1] == 0.0 && dSelectedObj[2] == 0.0);
 
@@ -894,7 +985,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
     if (!KeyFrameFound)
     {
         std::cout << "\x1B[31m" << "ERROR occured: keyframe missing" << "\x1B[0m" << std::endl;
-        return;
+        return false;
     }
     Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
     cv::cv2eigen(Twc,ETwc);
@@ -906,6 +997,7 @@ void MapDrawer::RandomlyGetObjPose(std::string object,
 //    output[1] = x3Dw.at<float>(2, 0);
     output[0] = EX3Dw[0];
     output[1] = EX3Dw[2];
+    return true;
 }
 
 } //namespace ORB_SLAM

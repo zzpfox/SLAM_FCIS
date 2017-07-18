@@ -18,7 +18,7 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpTracker(pTracking),
     mpMapDrawer(pMapDrawer),
     mfcLeafSize(0.025),
-    mfObstacleWidth(16.0),
+    mfObstacleWidth(12.0),
     mfHeightUpperBound(1.0),
     mfHeightLowerBound(-0.2)
 {
