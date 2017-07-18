@@ -61,7 +61,7 @@ public:
                             std::unordered_map<std::string,
                                                std::unordered_map<long unsigned int, ObjectPos> > &ObjectMap);
 
-    void CalPointCloud();
+    void CalPointCloud(bool saveOctoMap = false);
 
     void OmplPathPlanning(std::vector<float> &start,
                           std::vector<float> &target,
@@ -75,8 +75,6 @@ public:
 
     void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                           pcl::PointCloud<pcl::PointXYZ>::Ptr output);
-
-    void AutoBuildMap();
 
     void clear();
 
@@ -109,6 +107,10 @@ public:
     void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
 
     void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+
+    void SaveDenseMapToPCD();
+
+    void SaveDenseMapToSTL();
 
 private:
 

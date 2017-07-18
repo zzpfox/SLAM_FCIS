@@ -45,6 +45,9 @@ public:
                             std::vector<float> &target,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
+    bool UnvisitedAreasToGo(std::vector<float> &target,
+                            pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
     void ShowPlannedPath();
 
     void reset(bool cleanOccupancyMap = true);

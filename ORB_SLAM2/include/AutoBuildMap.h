@@ -35,6 +35,7 @@ public:
     void GridToWorld(std::vector<int> &input, std::vector<float> &output);
     void ShortenSolution();
     void SetCurrentFrame(Frame &m);
+    void GetPath(std::vector<std::vector<float> > &path);
 
 private:
     System *mpSystem;
@@ -59,6 +60,7 @@ private:
     float mPointSize;
     std::mutex mMutexObstacle;
     std::mutex mMutexFrame;
+    std::mutex mMutexPath;
 
 
 

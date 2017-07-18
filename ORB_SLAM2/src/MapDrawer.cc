@@ -25,11 +25,20 @@
 #include <mutex>
 #include <boost/filesystem.hpp>
 #include <pcl/point_types.h>
+#include <pcl/filters/crop_hull.h>
+#include <pcl/surface/mls.h>
+#include <pcl/io/vtk_lib_io.h>
+#include <pcl/io/vtk_io.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/surface/gp3.h>
 #include <pcl/point_cloud.h>
+#include <pcl/surface/poisson.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
 #include <octomap/octomap.h>
 #include <octomap/ColorOcTree.h>
+#include <pcl/io/pcd_io.h>
 #include <pcl/filters/random_sample.h>
 #include <algorithm>
 #include <sstream>
@@ -45,8 +54,8 @@ std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
       mCloud(new pcl::PointCloud<pcl::PointXYZ>()),
-      mfHeightUpperBound(1.0),
-      mfHeightLowerBound(-0.2)
+      mfHeightUpperBound(0.6),
+      mfHeightLowerBound(-2.0)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     if (!fSettings.isOpened())
@@ -66,7 +75,7 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mPathPlanning = std::make_shared<PathPlanning2D> (planner,
                                                       mPointSize * 6.0,
                                                       mKeyFrameLineWidth * 4.0,
-                                                      5.0,
+                                                      16.0,
                                                       0.025,
                                                       mfHeightUpperBound,
                                                       mfHeightLowerBound);
@@ -83,6 +92,7 @@ void MapDrawer::DrawPointCloud()
     glBegin(GL_POINTS);
     glColor3f(1.0, 0.0, 1.0);
     for (auto p : mCloud->points) {
+//        if (p.y >= -mfHeightUpperBound && p.y <= -mfHeightLowerBound)
         if (p.y >= -mfHeightUpperBound && p.y <= 2.0)
         {
             glVertex3f(p.x, p.y, p.z);
@@ -92,7 +102,7 @@ void MapDrawer::DrawPointCloud()
     glEnd();
 }
 
-void MapDrawer::CalPointCloud()
+void MapDrawer::CalPointCloud(bool saveOctoMap)
 {
     std::chrono::time_point<std::chrono::system_clock> start;
     std::chrono::time_point<std::chrono::system_clock> end;
@@ -106,7 +116,7 @@ void MapDrawer::CalPointCloud()
     for (int j = 0; j < kFNum; j += sampleFrequency) {
         sampledVPKFs.push_back(vpKFs[j]);
     }
-    int numThreads = 2;
+    int numThreads = 3;
     std::thread threads[numThreads];
     std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds;
     for (int i = 0; i < numThreads; i++)
@@ -134,11 +144,13 @@ void MapDrawer::CalPointCloud()
 
 //        mCloud = cloud;
     }
-//    if (mpThreadOctomap) {
-//        mpThreadOctomap->join();
-//    }
-//    mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
-
+    if (saveOctoMap)
+    {
+        if (mpThreadOctomap) {
+            mpThreadOctomap->join();
+        }
+        mpThreadOctomap.reset(new thread(&MapDrawer::BuildOctomap, this, mCloud));
+    }
     end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = end - start;
     std::cout << "Total Number of Points: " << mCloud->size() << std::endl;
@@ -213,9 +225,6 @@ void MapDrawer::FindObjects()
         std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
         mbFindObjCalPoints = false;
         mPathPlanning->PlanPath(start, target, mCloud);
-        std::vector<float> curr(2, 0);
-        std::vector<float> goal;
-        mPathPlanning->UnvisitedAreasToGo(curr, goal, mCloud);
     }
     mPathPlanning->ShowPlannedPath();
 }
@@ -277,6 +286,15 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
             point.y = yy;
             point.z = zz;
             cloud->points.push_back(point);
+//            if (yy >= -mfHeightUpperBound && yy <= -mfHeightLowerBound)
+//            {
+//                pcl::PointXYZ point;
+//                point.x = xx;
+//                point.y = yy;
+//                point.z = zz;
+//                cloud->points.push_back(point);
+//            }
+
 
         }
 
@@ -322,6 +340,121 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
     }
 }
 
+void MapDrawer::SaveDenseMapToPCD()
+{
+    CalPointCloud();
+    boost::filesystem::path parentPath(msPointCloudPath);
+    parentPath = parentPath.parent_path();
+    boost::filesystem::path resultPath("Results");
+    resultPath = parentPath / resultPath;
+    boost::filesystem::create_directories(resultPath);
+    boost::filesystem::path denseMapASCIIPath("densemap_ascii.pcd");
+    denseMapASCIIPath = resultPath / denseMapASCIIPath;
+    pcl::io::savePCDFileASCII(denseMapASCIIPath.string(), *mCloud);
+    boost::filesystem::path denseMapBinaryPath("densemap_binary.pcd");
+    denseMapBinaryPath = resultPath / denseMapBinaryPath;
+    pcl::io::savePCDFileBinary(denseMapBinaryPath.string(), *mCloud);
+    std::cout << "saving pcd files done ... " << std::endl;
+}
+
+void MapDrawer::SaveDenseMapToSTL()
+{
+    CalPointCloud();
+    // Normal estimation*
+//    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+//    pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+//    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+//    tree->setInputCloud (mCloud);
+//    n.setInputCloud (mCloud);
+//    n.setSearchMethod (tree);
+//    n.setKSearch (10);
+//    n.compute (*normals);
+//    std::cout << "compute normal done ..." << std::endl;
+//    //* normals should not contain the point normals + surface curvatures
+//
+//    // Concatenate the XYZ and normal fields*
+//    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals (new pcl::PointCloud<pcl::PointNormal>);
+//    pcl::concatenateFields (*mCloud, *normals, *cloud_with_normals);
+    //* cloud_with_normals = cloud + normals
+
+
+    // Create a KD-Tree
+    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+
+    // Output has the PointNormal type in order to store the normals calculated by MLS
+    pcl::PointCloud<pcl::PointNormal>::Ptr mls_points(new pcl::PointCloud<pcl::PointNormal>);
+
+    // Init object (second point type is for the normals, even if unused)
+    pcl::MovingLeastSquares<pcl::PointXYZ, pcl::PointNormal> mls;
+
+    mls.setComputeNormals (true);
+
+    // Set parameters
+    mls.setInputCloud (mCloud);
+    mls.setPolynomialFit (true);
+    mls.setSearchMethod (tree);
+    mls.setSearchRadius (0.1);
+
+    // Reconstruct
+    mls.process (*mls_points);
+
+    std::cout << "Smoothing and normal estimation done ..." << std::endl;
+
+    // Create search tree*
+    pcl::search::KdTree<pcl::PointNormal>::Ptr tree2 (new pcl::search::KdTree<pcl::PointNormal>);
+    tree2->setInputCloud (mls_points);
+
+    pcl::PolygonMesh triangles;
+    pcl::Poisson<pcl::PointNormal> psn;
+    //pcl::PolygonMesh triangles;
+
+    psn.setInputCloud(mls_points);
+    psn.setSearchMethod(tree2);
+    psn.setDepth(9);
+    psn.setSolverDivide(7);
+    psn.setIsoDivide(7);
+    psn.setSamplesPerNode(2.0);
+    psn.reconstruct (triangles);
+
+//    // Initialize objects
+//    pcl::GreedyProjectionTriangulation<pcl::PointNormal> gp3;
+//    pcl::PolygonMesh triangles;
+//
+//
+//    // Set the maximum distance between connected points (maximum edge length)
+//    gp3.setSearchRadius (0.5);
+//
+//    // Set typical values for the parameters
+//    gp3.setMu (2.5);
+//    gp3.setMaximumNearestNeighbors (2000);
+//    gp3.setMaximumSurfaceAngle(M_PI/4); // 45 degrees
+//    gp3.setMinimumAngle(M_PI/18); // 10 degrees
+//    gp3.setMaximumAngle(2*M_PI/3); // 120 degrees
+//    gp3.setNormalConsistency(false);
+//
+//    // Get result
+//    gp3.setInputCloud (mls_points);
+//    gp3.setSearchMethod (tree2);
+//    gp3.reconstruct (triangles);
+    std::cout << "triangulation done ..." << std::endl;
+
+    boost::filesystem::path parentPath(msPointCloudPath);
+    parentPath = parentPath.parent_path();
+    boost::filesystem::path resultPath("Results");
+    resultPath = parentPath / resultPath;
+    boost::filesystem::create_directories(resultPath);
+    boost::filesystem::path meshPath("densemap.vtk");
+    meshPath = resultPath / meshPath;
+    pcl::io::saveVTKFile(meshPath.string(), triangles);
+
+    boost::filesystem::path stlPath("densemap.stl");
+    stlPath = resultPath / stlPath;
+    pcl::io::savePolygonFileSTL(stlPath.string(), triangles);
+    std::cout << "saving stl file done ..." << std::endl;
+
+}
+
+
 void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 {
 //    pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
@@ -354,7 +487,10 @@ void
 MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                             pcl::PointCloud<pcl::PointXYZ>::Ptr output)
 {
-//    cout << "Original Cloud Size:" << cloud->points.size() << endl;
+    cout << "Original Cloud Size:" << cloud->points.size() << endl;
+    std::vector<int> indices;
+    pcl::removeNaNFromPointCloud(*cloud, *cloud, indices);
+    cout << "Cloud Size after NaN Removal:" << cloud->points.size() << endl;
 //    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
@@ -372,50 +508,57 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
     voxelFilter.setInputCloud(cloud);
     voxelFilter.filter(*cloudVoxel);
-//    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
+    cout << "Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
 
-    std::vector<std::vector<float> > vXYZCoords(3, std::vector<float> ());
-    std::vector<std::vector<float> > vIQRBounds(3, std::vector<float> (2, 0));
-    for (auto &p : cloudVoxel->points)
+    if (cloudVoxel->points.size() > 0)
     {
-        vXYZCoords[0].push_back(p.x);
-        vXYZCoords[1].push_back(p.y);
-        vXYZCoords[2].push_back(p.z);
-    }
-    for (int i = 0; i < vXYZCoords.size(); i++)
-    {
-        std::vector<float> &vCoords = vXYZCoords[i];
-        auto const Q1 = vCoords.size() / 4;
-        auto const Q3 = vCoords.size() * 3 / 4;
-        std::nth_element(vCoords.begin(),          vCoords.begin() + Q1, vCoords.end());
-        std::nth_element(vCoords.begin() + Q1 + 1, vCoords.begin() + Q3, vCoords.end());
-        float q25 = *(vCoords.begin() + Q1);
-        float q75 = *(vCoords.begin() + Q3);
-        float iqr = q75 - q25;
-        float lowerBound = q25 - iqr * 1.5;
-        float upperBound = q75 + iqr * 1.5;
-        vIQRBounds[i][0] = lowerBound;
-        vIQRBounds[i][1] = upperBound;
-    }
-    cloudIQRFilter->points.clear();
-    for (auto &p : cloudVoxel->points)
-    {
-        if (p.x >= vIQRBounds[0][0] && p.x <= vIQRBounds[0][1] &&
-            p.y >= vIQRBounds[1][0] && p.y <= vIQRBounds[1][1] &&
-            p.z >= vIQRBounds[2][0] && p.z <= vIQRBounds[2][1])
+        std::vector<std::vector<float> > vXYZCoords(3, std::vector<float> ());
+        std::vector<std::vector<float> > vIQRBounds(3, std::vector<float> (2, 0));
+        for (auto &p : cloudVoxel->points)
         {
-            cloudIQRFilter->points.push_back(p);
+            vXYZCoords[0].push_back(p.x);
+            vXYZCoords[1].push_back(p.y);
+            vXYZCoords[2].push_back(p.z);
         }
+        for (int i = 0; i < vXYZCoords.size(); i++)
+        {
+            std::vector<float> &vCoords = vXYZCoords[i];
+            auto const Q1 = vCoords.size() / 4;
+            auto const Q3 = vCoords.size() * 3 / 4;
+            std::nth_element(vCoords.begin(),          vCoords.begin() + Q1, vCoords.end());
+            std::nth_element(vCoords.begin() + Q1 + 1, vCoords.begin() + Q3, vCoords.end());
+            float q25 = *(vCoords.begin() + Q1);
+            float q75 = *(vCoords.begin() + Q3);
+            float iqr = q75 - q25;
+            float lowerBound = q25 - iqr * 1.5;
+            float upperBound = q75 + iqr * 1.5;
+            vIQRBounds[i][0] = lowerBound;
+            vIQRBounds[i][1] = upperBound;
+        }
+        cloudIQRFilter->points.clear();
+        for (auto &p : cloudVoxel->points)
+        {
+            if (p.x >= vIQRBounds[0][0] && p.x <= vIQRBounds[0][1] &&
+                p.y >= vIQRBounds[1][0] && p.y <= vIQRBounds[1][1] &&
+                p.z >= vIQRBounds[2][0] && p.z <= vIQRBounds[2][1])
+            {
+                cloudIQRFilter->points.push_back(p);
+            }
+        }
+        cout << "Current Frame Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
     }
-//    cout << "Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
+    else
+    {
+        cloudIQRFilter = cloudVoxel;
+    }
 
     // statistical removal
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-    sor.setMeanK(8);
-    sor.setStddevMulThresh(0.2);
+    sor.setMeanK(15);
+    sor.setStddevMulThresh(1.0);
     sor.setInputCloud(cloudIQRFilter);
     sor.filter(*output);
-//    cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
+    cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
 
 }
 

@@ -80,6 +80,9 @@ void Viewer::Run()
     pangolin::Var<bool> menuFetchObjects("menu.Fetch Objects", false, true);
     pangolin::Var<bool> menuShowSegObjects("menu.Show SegObjects", false, true);
     pangolin::Var<bool> menuShowAutoMap("menu.Show AutoMap", false, true);
+    pangolin::Var<bool> menuSaveOctoMap("menu.Save OctoMap", false, true);
+    pangolin::Var<bool> menuSavePCDFile("menu.Save PCD File", false, true);
+    pangolin::Var<bool> menuSaveSTLFile("menu.Save STL File", false, true);
     pangolin::Var<bool> menuSaveMap("menu.Save Map", false, true);
     pangolin::Var<bool> menuReset("menu.Reset", false, false);
 
@@ -103,6 +106,9 @@ void Viewer::Run()
     bool bLocalizationMode = false;
     bool bShowObject = true;
     bool bSaveMap = true;
+    bool bSaveOctoMap = true;
+    bool bSavePCDFile = true;
+    bool bSaveSTLFile = true;
 
     while (1) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -171,6 +177,35 @@ void Viewer::Run()
             mpMapDrawer->mbFindObjCalPoints = true;
         }
 
+        if (menuSaveOctoMap) {
+            if (bSaveOctoMap) {
+                mpMapDrawer->CalPointCloud(true);
+                bSaveOctoMap = false;
+            }
+        }
+        else {
+            bSaveOctoMap = true;
+        }
+
+        if (menuSavePCDFile) {
+            if (bSavePCDFile) {
+                mpMapDrawer->SaveDenseMapToPCD();
+                bSavePCDFile = false;
+            }
+        }
+        else {
+            bSavePCDFile = true;
+        }
+
+        if (menuSaveSTLFile) {
+            if (bSaveSTLFile) {
+                mpMapDrawer->SaveDenseMapToSTL();
+                bSaveSTLFile = false;
+            }
+        }
+        else {
+            bSaveSTLFile = true;
+        }
 
         if (menuSaveMap) {
             if (bSaveMap) {

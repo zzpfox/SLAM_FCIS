@@ -30,6 +30,8 @@
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/Pose.h"
+#include "geometry_msgs/PoseArray.h"
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
@@ -39,19 +41,23 @@ using namespace std;
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System *pSLAM, ros::NodeHandle& n)
-        : mpSLAM(pSLAM), mn(n)
+    ImageGrabber(ORB_SLAM2::System *pSLAM, ros::NodeHandle& n,  bool automap)
+        : mpSLAM(pSLAM), mn(n), mbAutoMap(automap)
     {
         mPosPub = mn.advertise<geometry_msgs::PoseStamped>("camera_pose", 5);
+        mPathPub = mn.advertise<geometry_msgs::PoseArray>("path", 5);
     }
 
     void GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sensor_msgs::ImageConstPtr &msgD);
 
     void PublishPose(cv::Mat Tcw);
+    void PublishPath(std::vector<std::vector<float> > &path);
 
     ORB_SLAM2::System *mpSLAM;
     ros::Publisher mPosPub;
+    ros::Publisher mPathPub;
     ros::NodeHandle mn;
+    bool mbAutoMap;
 };
 
 int main(int argc, char **argv)
@@ -91,7 +97,7 @@ int main(int argc, char **argv)
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::RGBD, true, reuseMap, autoMap);
     ros::NodeHandle nh;
-    ImageGrabber igb(&SLAM, nh);
+    ImageGrabber igb(&SLAM, nh, autoMap);
 
 
     message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh, "/kinect2/qhd/image_color_rect", 1);
@@ -134,7 +140,25 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sens
         return;
     }
     cv::Mat Tcw = mpSLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, cv_ptrRGB->header.stamp.toSec());
+    if(mbAutoMap && mpSLAM->mpAutoBuildMap)
+    {
+        std::vector<std::vector<float> > path;
+        mpSLAM->mpAutoBuildMap->GetPath(path);
+        PublishPath(path);
+    }
+//    std::vector<std::vector<float> > path;
+//    for (int i = 0; i < 500; i++)
+//    {
+//        std::vector<float> tmpPoint;
+//        float x = i / 500.0 * 1.0;
+//        float z = -i / 500.0 * 1.0 / 1.732;
+//        tmpPoint.push_back(x);
+//        tmpPoint.push_back(z);
+//        path.push_back(tmpPoint);
+//    }
+//    PublishPath(path);
     PublishPose(Tcw);
+
 }
 
 void ImageGrabber::PublishPose(cv::Mat Tcw)
@@ -156,6 +180,30 @@ void ImageGrabber::PublishPose(cv::Mat Tcw)
         poseMSG.header.stamp = ros::Time::now();
         mPosPub.publish(poseMSG);
     }
+}
+
+void ImageGrabber::PublishPath(std::vector<std::vector<float> > &path)
+{
+    geometry_msgs::PoseArray poseArrayMSG;
+    if (path.size() > 0)
+    {
+        poseArrayMSG.header.frame_id = "planned_path";
+        poseArrayMSG.header.stamp = ros::Time::now();
+        for (int i = 0; i < path.size(); i++)
+        {
+            geometry_msgs::Pose tmpPose;
+            tmpPose.position.x = path[i][0];
+            tmpPose.position.y = 0;
+            tmpPose.position.z = path[i][1];
+            tmpPose.orientation.x = 1;
+            tmpPose.orientation.y = 0;
+            tmpPose.orientation.z = 0;
+            tmpPose.orientation.w = 0;
+            poseArrayMSG.poses.push_back(tmpPose);
+        }
+        mPathPub.publish(poseArrayMSG);
+    }
+
 }
 
 

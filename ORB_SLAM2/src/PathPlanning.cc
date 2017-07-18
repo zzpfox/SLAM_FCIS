@@ -56,7 +56,7 @@ void PathPlanning2D::AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
     *mCloud += *cloud;
 }
 
-void PathPlanning2D::reset(bool cleanOccupancyMap = true)
+void PathPlanning2D::reset(bool cleanOccupancyMap)
 {
     mvStartG.clear();
     mvStartW.clear();
@@ -66,7 +66,7 @@ void PathPlanning2D::reset(bool cleanOccupancyMap = true)
     mvTmpTargetW.clear();
     if (mCloud)
     {
-        mCloud->clear();
+        mCloud.reset();
     }
 
     if (mpSolution)
@@ -76,6 +76,7 @@ void PathPlanning2D::reset(bool cleanOccupancyMap = true)
     if (cleanOccupancyMap)
     {
         mObstacles.clear();
+        mObstaclesSeenNum.clear();
         mObstaclesHeight.clear();
     }
 
@@ -249,7 +250,7 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
     cv::Mat centroids;
     int nLabels = connectedComponentsWithStats(cvUnSeenAreaGray, labelImage, stats,centroids, 8);
 //    std::cout << "stats \n" << stats << std::endl;
-    int areaThresh = 400;
+    int areaThresh = 1600;
 
 //    // get all unvisited area
 //    std::unordered_set<int> sLabelOfInterest;
@@ -301,6 +302,10 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(0, interestedPixels.size() - 1);
         std::vector<int> randomInterestedPixel = interestedPixels[dis(gen)];
+        while (mObstacles[randomInterestedPixel[1]][randomInterestedPixel[0]] == 1)
+        {
+            randomInterestedPixel = interestedPixels[dis(gen)];
+        }
         GridToWorld(randomInterestedPixel, target);
         return true;
     }
@@ -311,6 +316,180 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
 
 }
 
+bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &target,
+                                        pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+{
+    UpdatePointCloud(cloud);
+    mvStartW = std::vector<float>(2, 0);
+    mvTargetW.clear();
+    Get2DBounds();
+    GenerateOccupancyMap();
+
+    std::vector<int> originInGrid;
+    WorldToGrid(mvStartW, originInGrid);
+    cv::Point2f currentPosCV = cv::Point(originInGrid[0], originInGrid[1]);
+
+    cv::Mat cvObstacles, cvObstaclesFlipped;
+    Convert2DVectorToMat(mObstacles, cvObstacles, false);
+    cvObstacles.convertTo(cvObstacles, CV_8UC1);
+    cvObstacles *= 255;
+    cv::flip(cvObstacles, cvObstaclesFlipped, 0);
+    cv::imwrite("obstacle.png", cvObstaclesFlipped);
+
+    cv::Mat cvObstaclesSeenNum, cvObstaclesSeenNumFlipped;
+    Convert2DVectorToMat(mObstaclesSeenNum, cvObstaclesSeenNum, false);
+    cv::flip(cvObstaclesSeenNum, cvObstaclesSeenNumFlipped, 0);
+    cv::imwrite("cvObstaclesSeenNum.png", cvObstaclesSeenNumFlipped);
+
+    // remove high frequency noise with filters
+    // Gaussian Filter (faster)
+    double sigma = 0.8;
+    cv::Mat filteredObstacles;
+    cv::GaussianBlur(cvObstacles, filteredObstacles, cv::Size(15, 15), sigma, sigma);
+//    // Median Filter
+//    cv::medianBlur(cvObstacles, filteredObstacles, 7);
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(filteredObstacles, contours, hierarchy,
+                     cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE,
+                     cv::Point(0, 0));
+    double distance = std::numeric_limits<double>::max();
+    int innerBoundaryId = 0;
+    bool bFindInnerContour = false;
+    for (int i = 0; i < contours.size(); i++) {
+        double inOrOut = cv::pointPolygonTest(contours[i], currentPosCV, true);
+        if (inOrOut > 0) {
+//            std::cout << "contour id: " << i << " dist: " << inOrOut << std::endl;
+            if (inOrOut < distance)
+            {
+                distance = inOrOut;
+                innerBoundaryId = i;
+                bFindInnerContour = true;
+            }
+        }
+    }
+
+    // visualization
+    cv::Mat contourImage = cv::Mat::zeros(cvObstacles.size(), CV_8UC3);
+    cv::Mat contourImageFlipped;
+    if (bFindInnerContour)
+    {
+
+        cv::circle(contourImage, currentPosCV, 5, cv::Scalar(0, 255, 0), -1);
+        drawContours( contourImage, contours, innerBoundaryId, cv::Scalar(255, 255, 0),
+                      3, 8, hierarchy, 0, cv::Point() );
+        cv::flip(contourImage, contourImageFlipped, 0);
+        cv::imwrite("InnerMostContour.png", contourImageFlipped);
+    }
+    cv::RNG rng(12);
+    for (size_t i = 0; i < contours.size(); i++) {
+        cv::Scalar color = cv::Scalar(rng.uniform(0, 255), rng.uniform(0, 255), rng.uniform(0, 255));
+        drawContours(contourImage, contours, (int) i, color, 2, 8, hierarchy, 0, cv::Point());
+    }
+    cv::circle(contourImage, currentPosCV, 5, cv::Scalar(0, 255, 0), -1);
+    cv::flip(contourImage, contourImageFlipped, 0);
+    cv::imwrite("AllContours.png", contourImageFlipped);
+
+
+    cv::Mat cvSeenArea = cv::Mat::zeros( cvObstacles.size(), CV_8UC1 );
+    for( int i = 0; i < cvSeenArea.rows; ++i)
+    {
+        uchar* p = cvSeenArea.ptr<uchar>(i);
+        for (int j = 0; j < cvSeenArea.cols; ++j)
+        {
+            cv::Point2f tmpPoint = cv::Point(j, i);
+            double tmpInOrOut = cv::pointPolygonTest(contours[innerBoundaryId],tmpPoint, false );
+            if (tmpInOrOut > 0)
+            {
+                if (cvObstaclesSeenNum.at<int>(i, j) < 50)
+                {
+                    p[j] = 255;
+                }
+            }
+        }
+    }
+
+    cv::Mat cvSeenAreaColor;
+    cv::cvtColor(cvSeenArea, cvSeenAreaColor, cv::COLOR_GRAY2BGR);
+    drawContours(cvSeenAreaColor, contours, innerBoundaryId, cv::Scalar(0, 125, 125),
+                 1, 8, hierarchy, 0, cv::Point());
+    cv::flip(cvSeenAreaColor, cvSeenAreaColor, 0);
+    cv::imwrite("UnSeenArea.png", cvSeenAreaColor);
+
+    cv::Mat cvUnSeenAreaGray = cvSeenArea > 150;
+//    cv::cvtColor(cvUnSeenAreaGray, cvUnSeenAreaGray, cv::COLOR_BGR2GRAY);
+    cv::Mat labelImage(cvUnSeenAreaGray.size(), CV_32S);
+    cv::Mat stats;
+    cv::Mat centroids;
+    int nLabels = connectedComponentsWithStats(cvUnSeenAreaGray, labelImage, stats,centroids, 8);
+//    std::cout << "stats \n" << stats << std::endl;
+    int areaThresh = 1600;
+
+//    // get all unvisited area
+//    std::unordered_set<int> sLabelOfInterest;
+//    for (int i = 1; i < stats.rows; i++)
+//    {
+//        int area = stats.at<int>(i, 4);
+//        if (area > areaThresh)
+//        {
+//            sLabelOfInterest.insert(i);
+//        }
+//    }
+//    std::unordered_map<int, std::set<std::vector<int> > > vAreaOfInterest;
+//    for(int r = 0; r < labelImage.rows; ++r){
+//        for(int c = 0; c < labelImage.cols; ++c){
+//            int label = labelImage.at<int>(r, c);
+//            if (sLabelOfInterest.count(label) > 0)
+//            {
+//                std::vector<int> pixel = {r, c};
+//                vAreaOfInterest[label].insert(pixel);
+//            }
+//        }
+//    }
+
+    // choose the first one whose area is greater than areaThresh
+    int interestedLabel = 0;
+    for (int i = 1; i < stats.rows; i++)
+    {
+        int area = stats.at<int>(i, 4);
+        if (area > areaThresh)
+        {
+            interestedLabel = i;
+        }
+    }
+//    std::cout << "interestedLabel: " << interestedLabel << std::endl;
+    if (interestedLabel > 0)
+    {
+        std::vector<std::vector<int> > interestedPixels;
+        for(int r = 0; r < labelImage.rows; ++r){
+            for(int c = 0; c < labelImage.cols; ++c){
+                int label = labelImage.at<int>(r, c);
+                if (label == interestedLabel)
+                {
+                    std::vector<int> pixel = {c, r};
+                    interestedPixels.push_back(pixel);
+                }
+            }
+        }
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, interestedPixels.size() - 1);
+        std::vector<int> randomInterestedPixel = interestedPixels[dis(gen)];
+        while (mObstacles[randomInterestedPixel[1]][randomInterestedPixel[0]] == 1)
+        {
+            randomInterestedPixel = interestedPixels[dis(gen)];
+        }
+        GridToWorld(randomInterestedPixel, target);
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+
 std::vector<float> PathPlanning2D::GetTargetW()
 {
     return mvTargetW;
@@ -320,10 +499,10 @@ void PathPlanning2D::ShowPlannedPath()
 {
     glPointSize(mPointSize * 2);
     glBegin(GL_POINTS);
-    glColor3f(1.0, 0.0, 0.0);
+    glColor3f(1.0, 0.0, 1.0);
     glVertex3f(0, 5, 0);
     glEnd();
-    if (mvStartG.size() == 2 && mvTargetG.size() == 2)
+    if (mvStartW.size() == 2 && mvTargetW.size() == 2)
     {
         glPointSize(mPointSize);
         glBegin(GL_POINTS);
@@ -402,6 +581,7 @@ void PathPlanning2D::ShowPlannedPath()
     glPointSize(mPointSize / 6.0);
     glBegin(GL_POINTS);
     glColor3f(0.0, 0.0, 1.0);
+
     for (int i = 0; i < mObstacles.size(); i++)
     {
         for (int j = 0; j < mObstacles[0].size(); j++)
@@ -738,7 +918,7 @@ bool PathPlanning2D::GetClosestFreePoint(std::vector<int> &output, int searchWid
                                          std::vector<std::pair<float, std::vector<int> > > &candidateOutput)
 {
     if (mObstacles[output[1]][output[0]] == 1) {
-        float heightThreshold = 0.6;
+        float heightThreshold = 1.5;
         std::vector<std::pair<float, std::vector<int> > > vCandidates(8,
                                                                       std::make_pair(std::numeric_limits<float>::lowest(),
                                                                                      std::vector<int>(2, 0)));
@@ -992,11 +1172,11 @@ void PathPlanning2D::Get2DBounds()
         mvBounds[2] = std::min(mvBounds[2], mvTargetW[1]);
         mvBounds[3] = std::max(mvBounds[3], mvTargetW[1]);
     }
-
-    mvBounds[0] -= 0.3;
-    mvBounds[1] += 0.3;
-    mvBounds[2] -= 0.3;
-    mvBounds[3] += 0.3;
+    float margin = mfObstacleWidth * mfcLeafSize + 0.2;
+    mvBounds[0] -= margin;
+    mvBounds[1] += margin;
+    mvBounds[2] -= margin;
+    mvBounds[3] += margin;
 }
 
 void PathPlanning2D::CalGridSize()
