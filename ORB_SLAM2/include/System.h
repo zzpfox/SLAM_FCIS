@@ -136,6 +136,7 @@ public:
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
 
     std::shared_ptr<AutoBuildMap> mpAutoBuildMap;
+    std::shared_ptr<MapDrawer> mpMapDrawer;
 
 private:
 
@@ -170,7 +171,7 @@ private:
     std::shared_ptr<Viewer> mpViewer;
 
     std::shared_ptr<FrameDrawer> mpFrameDrawer;
-    std::shared_ptr<MapDrawer> mpMapDrawer;
+
 
     // System threads: Local Mapping, Loop Closing, Viewer.
     // The Tracking thread "lives" in the main execution thread that creates the System object.

@@ -63,6 +63,12 @@ public:
 
     void CalPointCloud(bool saveOctoMap = false);
 
+    void GetPath(std::vector<std::vector<float> > &path);
+
+    void UpdateSolution(std::shared_ptr<std::vector<std::vector<float> > > &pSolution);
+
+    void CleanSolution();
+
     void OmplPathPlanning(std::vector<float> &start,
                           std::vector<float> &target,
                           std::vector<std::vector<float> > &solution,
@@ -128,6 +134,9 @@ private:
     std::mutex mMutexCamera;
     std::mutex mMutexCloud;
     std::mutex mMutexMCloud;
+    std::mutex mMutexPath;
+
+    std::shared_ptr<std::vector<std::vector<float> > > mpSolution;
 };
 
 } //namespace ORB_SLAM

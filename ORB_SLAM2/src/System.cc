@@ -591,7 +591,7 @@ void System::SaveMap()
 
         std::cin >> save;
         std::cout << "Your input is: " << save << std::endl;
-        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
         if (std::cin.fail())
         {
             std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
@@ -601,7 +601,7 @@ void System::SaveMap()
         {
             std::cout << "\x1B[33m" << "Will save the map. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
             std::cin >> save;
-            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
             if (std::cin.fail())
             {
                 std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
@@ -626,7 +626,7 @@ void System::SaveMap()
         {
             std::cout << "\x1B[33m" << "Will not save the map. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
             std::cin >> save;
-            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
             if (std::cin.fail())
             {
                 std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;

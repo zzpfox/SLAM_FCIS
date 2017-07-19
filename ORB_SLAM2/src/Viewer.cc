@@ -174,6 +174,7 @@ void Viewer::Run()
             mpMapDrawer->FindObjects();
         }
         else {
+            mpMapDrawer->CleanSolution();
             mpMapDrawer->mbFindObjCalPoints = true;
         }
 

@@ -45,6 +45,7 @@
 #include <iomanip>
 #include <limits>
 #include <stdlib.h>
+#include <math.h>
 #include <time.h>
 #include <opencv2/core/eigen.hpp>
 
@@ -72,13 +73,16 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mbCalPointCloud = true;
     mbFindObjCalPoints = true;
     std::string planner = static_cast<std::string> (fSettings["PathPlanningPlanner"]);
+    float obstacleWidth = fSettings["RobotRadius"];
     mPathPlanning = std::make_shared<PathPlanning2D> (planner,
                                                       mPointSize * 6.0,
                                                       mKeyFrameLineWidth * 4.0,
-                                                      12.0,
+                                                      obstacleWidth,
                                                       0.025,
+                                                      mpMap->msDataFolder,
                                                       mfHeightUpperBound,
                                                       mfHeightLowerBound);
+    mpSolution = std::make_shared<std::vector<std::vector<float> > >();
 }
 
 void MapDrawer::DrawPointCloud()
@@ -217,12 +221,11 @@ void MapDrawer::FindObjects()
 
         std::vector<float> target(2, 0);
         srand(time(NULL));
-        std::cin.clear();
+//        std::cin >> ws;
         std::string object;
         std::cout << "\x1B[33m" << "Enter the Target Object " << "\x1B[0m" << std::endl;
         std::getline(std::cin, object);
-        std::cout << "Your input is: " << object << std::endl;
-        std::cin.clear();
+        std::cout << "Your input is: [" << object << "]" << std::endl;
         if (objectMap.count(object) > 0)
         {
             if(!RandomlyGetObjPose(object, target, objectMap))
@@ -243,9 +246,67 @@ void MapDrawer::FindObjects()
         std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
         std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
         mbFindObjCalPoints = false;
-        mPathPlanning->PlanPath(start, target, mCloud);
+        if (mPathPlanning->PlanPath(start, target, mCloud))
+        {
+            UpdateSolution(mPathPlanning->mpSolution);
+        }
+
+    }
+    else if (mpSolution && mpSolution->size() > 0)
+    {
+        cv::Mat Rwc(3, 3, CV_32F);
+        cv::Mat twc(3, 1, CV_32F);
+        std::vector<float> cameraCenter(2, 0);
+
+        if (!mCameraPose.empty())
+        {
+            unique_lock<mutex> lock(mMutexCamera);
+            Rwc = mCameraPose.rowRange(0, 3).colRange(0, 3).t();
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
+            cv::cv2eigen(Rwc, ERwc);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> Etcw;
+            cv::cv2eigen(mCameraPose.rowRange(0, 3).col(3), Etcw);
+            Eigen::Vector3f Etwc = -ERwc * Etcw;
+            cv::eigen2cv(Etwc, twc);
+            float *it = twc.ptr<float>(0);
+            cameraCenter[0] = it[0];
+            cameraCenter[1] = it[2];
+        }
+        float fToTargetX = cameraCenter[0] - mpSolution->back()[0];
+        float fToTargetZ = cameraCenter[1] - mpSolution->back()[1];
+        float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
+        float fToTargetDistance = sqrt(fToTargetDistanceSquared);
+        if (fToTargetDistance < 0.5)
+        {
+            std::cout << "\x1B[35m" << "Fetch object: close to target,  distance: " << fToTargetDistance
+                      << "\x1B[0m" << std::endl;
+            unique_lock<mutex> lock(mMutexPath);
+            mpSolution->clear();
+        }
     }
     mPathPlanning->ShowPlannedPath();
+}
+
+void MapDrawer::GetPath(std::vector<std::vector<float> > &path)
+{
+    unique_lock<mutex> lock(mMutexPath);
+    if (mpSolution && mpSolution->size() > 0) {
+        path = *mpSolution;
+    }
+}
+
+void MapDrawer::CleanSolution()
+{
+    {
+        unique_lock<mutex> lock(mMutexPath);
+        mpSolution->clear();
+    }
+}
+
+void MapDrawer::UpdateSolution(std::shared_ptr<std::vector<std::vector<float> > > &pSolution)
+{
+    unique_lock<mutex> lock(mMutexPath);
+    mpSolution = pSolution;
 }
 
 //void MapDrawer::FindObjects()
@@ -814,10 +875,8 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
     const float &w = mCameraSize;
     const float h = w * 0.75;
     const float z = w * 0.6;
-    Twc.m[13] = 5.0;
+
     glPushMatrix();
-
-
 #ifdef HAVE_GLES
     glMultMatrixf(Twc.m);
 #else
@@ -826,6 +885,41 @@ void MapDrawer::DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
 
     glLineWidth(mCameraLineWidth);
     glColor3f(0.0f, 1.0f, 0.0f);
+    glBegin(GL_LINES);
+    glVertex3f(0, 0, 0);
+    glVertex3f(w, h, z);
+    glVertex3f(0, 0, 0);
+    glVertex3f(w, -h, z);
+    glVertex3f(0, 0, 0);
+    glVertex3f(-w, -h, z);
+    glVertex3f(0, 0, 0);
+    glVertex3f(-w, h, z);
+
+    glVertex3f(w, h, z);
+    glVertex3f(w, -h, z);
+
+    glVertex3f(-w, h, z);
+    glVertex3f(-w, -h, z);
+
+    glVertex3f(-w, h, z);
+    glVertex3f(w, h, z);
+
+    glVertex3f(-w, -h, z);
+    glVertex3f(w, -h, z);
+    glEnd();
+
+    glPopMatrix();
+
+    //Draw camera on the projection plane
+    Twc.m[13] = 5.0;
+    glPushMatrix();
+#ifdef HAVE_GLES
+    glMultMatrixf(Twc.m);
+#else
+    glMultMatrixd(Twc.m);
+#endif
+    glLineWidth(mCameraLineWidth);
+    glColor3f(0.5f, 0.0f, 0.5f);
     glBegin(GL_LINES);
     glVertex3f(0, 0, 0);
     glVertex3f(w, h, z);

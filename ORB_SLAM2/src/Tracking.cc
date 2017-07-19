@@ -156,13 +156,13 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
         std::string deleteDepth;
         while(true)
         {
-            std::cout << "\x1B[33m" << "Do you wanna delete the previously stored DepthImages? " << std::endl
+            std::cout << "\x1B[33m" << "Do you wanna delete the previously stored Map Data? " << std::endl
                       << "'y' or 'yes': to delete" << std::endl
                       << "'n' or 'no': not to delete"<< "\x1B[0m" << std::endl;
 
             std::cin >> deleteDepth;
             std::cout << "Your input is: " << deleteDepth << std::endl;
-            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
             if (std::cin.fail())
             {
                 std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
@@ -170,9 +170,9 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
             }
             if (deleteDepth == "y" || deleteDepth == "yes")
             {
-                std::cout << "\x1B[33m" << "Will delete the DepthImages. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+                std::cout << "\x1B[33m" << "Will delete the Map Data. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
                 std::cin >> deleteDepth;
-                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
                 if (std::cin.fail())
                 {
                     std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
@@ -181,20 +181,20 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
                 std::cout << "Your input is: " << deleteDepth << std::endl;
                 if (deleteDepth == "y" || deleteDepth == "yes")
                 {
-                    std::cout << "Deleting and recreating the DepthImage folder ..." << std::endl;
+                    std::cout << "Deleting and recreating the previous Map Data folder ..." << std::endl;
 
-                    boost::filesystem::remove_all(pointCloudFolderFullPath);
+                    boost::filesystem::remove_all(msDataFolder);
                     boost::filesystem::create_directories(pointCloudFolderFullPath);
 
-                    std::cout << "Deleting and recreating the DepthImage folder done ... " << std::endl;
+                    std::cout << "Deleting and recreating the Map Data folder done ... " << std::endl;
                     break;
                 }
             }
             else if (deleteDepth == "n" || deleteDepth == "no")
             {
-                std::cout << "\x1B[33m" << "WARNING: Will not delete the DepthImages. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
+                std::cout << "\x1B[33m" << "WARNING: Will not delete the Map Data. Are you sure? ('y' or 'yes' to confirm)" << "\x1B[0m" << std::endl;
                 std::cin >> deleteDepth;
-                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<streamsize>::max(),'\n');
                 if (std::cin.fail())
                 {
                     std::cout << "\x1B[33m" << "Invalid input, input must be string"<< "\x1B[0m" << std::endl;
@@ -203,7 +203,7 @@ Tracking::Tracking(System *pSys, std::shared_ptr<ORBVocabulary> pVoc, std::share
                 std::cout << "Your input is: " << deleteDepth << std::endl;
                 if (deleteDepth == "y" || deleteDepth == "yes")
                 {
-                    std::cout << "DepthImages folder is not deleted ..." << std::endl;
+                    std::cout << "Map Data folder is not deleted ..." << std::endl;
                     break;
                 }
             }

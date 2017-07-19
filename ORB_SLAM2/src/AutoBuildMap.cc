@@ -18,14 +18,15 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpTracker(pTracking),
     mpMapDrawer(pMapDrawer),
     mfcLeafSize(0.025),
-    mfObstacleWidth(12.0),
     mfHeightUpperBound(1.0),
-    mfHeightLowerBound(-0.2)
+    mfHeightLowerBound(-0.2),
+    mbAutoDone(false)
 {
     mvBounds = std::vector<float>(4, 0.0);
     std::string planner = static_cast<std::string> (fSettings["AutoBuildMapPathPlanner"]);
     mLineWidth = fSettings["Viewer.KeyFrameLineWidth"];
     mPointSize = fSettings["Viewer.PointSize"];
+    mfObstacleWidth = fSettings["RobotRadius"];
     mLineWidth *= 4.0;
     mPointSize *= 6.0;
     mptPathPlanning = std::make_shared<PathPlanning2D>(planner,
@@ -33,6 +34,7 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
                                                        mLineWidth,
                                                        mfObstacleWidth,
                                                        mfcLeafSize,
+                                                       mpTracker->msDataFolder,
                                                        mfHeightUpperBound,
                                                        mfHeightLowerBound);
     mpSolution = std::make_shared<std::vector<std::vector<float> > >();
@@ -46,22 +48,19 @@ void AutoBuildMap::Run()
     std::cout << "Start building map automatically" << std::endl;
     sleep(2);  //wait for some time to accumulate some keyframes
     PlanPath();
-    bool bAutoDone = false;
-    while (!bAutoDone) {
+    mbAutoDone = false;
+    while (!mbAutoDone) {
         if (NeedReplanPath()) {
             int count = 0;
             while (!PlanPath()) {
                 count++;
                 if (count >= 2) {
                     EnsureAllAreasChecked();
-                    if (GoToStartPosition()) {
-                        std::cout << "going back to starting position" << std::endl;
-                    }
-                    else {
+                    if (!GoToStartPosition()){
                         std::cout << "cannot go back to starting position" << std::endl;
                     }
                     SaveMap();
-                    bAutoDone = true;
+                    mbAutoDone = true;
                     break;
                 }
             }
@@ -106,7 +105,7 @@ void AutoBuildMap::EnsureAllAreasChecked()
                       << "\x1B[0m" << std::endl;
             if (PlanPath(target)) {
                 while (true) {
-                    if (CloseToTarget(target)) {
+                    if (CloseToTarget(target, 0.9)) {
                         break;
                     }
                     if (NeedReplanPath()) {
@@ -130,7 +129,7 @@ void AutoBuildMap::EnsureAllAreasChecked()
     std::cout << "\x1B[34m" << "All areas have been checked ..." << "\x1B[0m" << std::endl;
 }
 
-bool AutoBuildMap::CloseToTarget(std::vector<float> &target)
+bool AutoBuildMap::CloseToTarget(std::vector<float> &target, float disThresh)
 {
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
@@ -147,9 +146,10 @@ bool AutoBuildMap::CloseToTarget(std::vector<float> &target)
     float fToTargetX = target[0] - fCameraCenterX;
     float fToTargetZ = target[1] - fCameraCenterZ;
     float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
-    if (fToTargetDistanceSquared < 2.56) // if the camera is close to the target, replan
+    if (fToTargetDistanceSquared < pow(disThresh, 2.0)) // if the camera is close to the target, replan
     {
         std::cout << "close to target " << std::endl;
+        mptPathPlanning->reset(false);
         return true;
     }
     else {
@@ -161,6 +161,7 @@ bool AutoBuildMap::GoToStartPosition()
 {
     std::cout << "\x1B[32m" << "Planning a path to go back to starting position ... " <<
               "\x1B[0m" << std::endl;
+    mObstacles.clear();
     mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
@@ -179,8 +180,13 @@ bool AutoBuildMap::GoToStartPosition()
     bool bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
     if (bFindPath) {
         UpdateSolution(mptPathPlanning->mpSolution);
-        while (!CloseToTarget(target)) {
+        while (!CloseToTarget(target, 0.5)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (NeedReplanPath()) {
+                if (!PlanPath(target)) {
+                    break;
+                }
+            }
         }
         {
             unique_lock<mutex> lock(mMutexPath);

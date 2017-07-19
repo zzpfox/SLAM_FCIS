@@ -106,7 +106,6 @@ void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int 
     ar & keyframe.Ow;
     ar & keyframe.Cw;
     ar & keyframe.mvpMapPoints;
-    ar & keyframe.mvpMapPoints;
     ar & keyframe.mGrid;
     ar & keyframe.mConnectedKeyFrameWeights;
     ar & keyframe.mvpOrderedConnectedKeyFrames;

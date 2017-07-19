@@ -32,6 +32,7 @@ class PathPlanning2D
 public:
     PathPlanning2D(std::string planner, float pointSize, float lineWidth,
                    float obstacleWidth, float leafSize,
+                   std::string dataFolder,
                    float upperBound=0.5, float lowerBound=-0.5);
 
     bool PlanPath(std::vector<float> &start,
@@ -92,8 +93,7 @@ private:
 
     void Convert2DVectorToMat(std::vector<std::vector<int> > &input,
                               cv::Mat &output,
-                              bool reverseRow = true,
-                              bool saveImage = true);
+                              bool reverseRow = true);
 
     std::vector<int> mvStartG; //coordinate in grid
     std::vector<int> mvTargetG;
@@ -104,7 +104,7 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
     std::vector<std::vector<int> > mObstacles;
     std::vector<std::vector<int> > mObstaclesSeenNum;
-    std::vector<std::vector<float> > mObstaclesHeight;
+//    std::vector<std::vector<float> > mObstaclesHeight;
     const float mfcLeafSize;
     std::vector<float> mvBounds;
     std::string msPlanner;
@@ -118,6 +118,8 @@ private:
     std::vector<std::pair<float, std::vector<int> > > mvCandidatesValidTarget;
     float mfUpperBound;
     float mfLowerBound;
+    std::string msDataFolder;
+    std::string msContourFolder;
 
 };
 

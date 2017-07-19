@@ -140,10 +140,16 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sens
         return;
     }
     cv::Mat Tcw = mpSLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, cv_ptrRGB->header.stamp.toSec());
-    if(mbAutoMap && mpSLAM->mpAutoBuildMap)
+    if(mbAutoMap && mpSLAM->mpAutoBuildMap && !mpSLAM->mpAutoBuildMap->mbAutoDone)
     {
         std::vector<std::vector<float> > path;
         mpSLAM->mpAutoBuildMap->GetPath(path);
+        PublishPath(path);
+    }
+    else
+    {
+        std::vector<std::vector<float> > path;
+        mpSLAM->mpMapDrawer->GetPath(path);
         PublishPath(path);
     }
 //    std::vector<std::vector<float> > path;

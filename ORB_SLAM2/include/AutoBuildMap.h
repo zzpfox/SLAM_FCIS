@@ -26,7 +26,7 @@ public:
     void CalGridSize();
     void Run();
 
-    bool CloseToTarget(std::vector<float> &target);
+    bool CloseToTarget(std::vector<float> &target, float disThresh = 1.4);
     bool GoToStartPosition();
     void EnsureAllAreasChecked();
     void Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud0,
@@ -36,6 +36,8 @@ public:
     void ShortenSolution();
     void SetCurrentFrame(Frame &m);
     void GetPath(std::vector<std::vector<float> > &path);
+
+    bool mbAutoDone;
 
 private:
     System *mpSystem;

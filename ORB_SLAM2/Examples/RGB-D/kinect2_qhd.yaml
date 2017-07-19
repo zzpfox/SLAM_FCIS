@@ -78,3 +78,4 @@ PathPlanningPlanner: RRTConnect
 
 AutoBuildMapPathPlanner: adstar
 
+RobotRadius: 20.0
