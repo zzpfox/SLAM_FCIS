@@ -611,11 +611,17 @@ void System::SaveMap()
             if (save == "y" || save == "yes")
             {
                 std::cout << "Saving the map ..." << std::endl;
-                sleep(1);
+                bool localizationMode = mpTracker->mbOnlyTracking;
+                ActivateLocalizationMode();
+                sleep(1.5);
                 {
                     std::ofstream os(msMapFileName);
                     boost::archive::binary_oarchive oa(os, boost::archive::no_header);
                     oa << mpMap;
+                }
+                if (!localizationMode)
+                {
+                    DeactivateLocalizationMode();
                 }
 
                 std::cout << "Saving map done ... " << std::endl;

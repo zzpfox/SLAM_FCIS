@@ -114,7 +114,7 @@ void MapDrawer::CalPointCloud(bool saveOctoMap)
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
 
     vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
-    int sampleFrequency = 4;
+    int sampleFrequency = 2;
     vector<std::shared_ptr<KeyFrame> > sampledVPKFs;
     int kFNum = vpKFs.size();
     for (int j = 0; j < kFNum; j += sampleFrequency) {
