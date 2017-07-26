@@ -32,6 +32,7 @@ If we reuse the map previously stored, the program will load in the map and ente
 * Add OMPL motion planning library (**Please install ompl from source for the latest version**)
 * Support automatically exploring unkonwn area and building map
 * Add SBPL motion planning library ([SBPL](https://github.com/sbpl/sbpl))
+* Support planning in (x, y) and (x, y , theta)
 
 ### Copyright
 For this specific version, copyright belongs to Shanghai LingXian Robotics. For commercial usage, please contact: chentao904@163.com

@@ -30,7 +30,8 @@
 #include <mutex>
 #include <thread>
 #include <memory>
-#include "PathPlanning.h"
+#include "PathPlanning2D.h"
+#include "PathPlanning2DXYTheta.h"
 
 namespace ORB_SLAM2
 {
@@ -48,6 +49,7 @@ public:
     static std::string msPointCloudPath;
     pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
     std::shared_ptr<PathPlanning2D> mPathPlanning;
+    std::shared_ptr<PathPlanning2DXYTheta> mPathPlanningXYTheta;
 
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
@@ -119,7 +121,7 @@ public:
     void SaveDenseMapToSTL();
 
 private:
-
+    bool mbXYThetaPlan;
     float mKeyFrameSize;
     float mKeyFrameLineWidth;
     float mGraphLineWidth;

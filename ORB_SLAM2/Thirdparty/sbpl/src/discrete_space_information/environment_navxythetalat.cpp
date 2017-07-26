@@ -28,6 +28,7 @@
  */
 
 #include <cmath>
+#include <iostream>
 #include <cstring>
 #include <ctime>
 #include <sbpl/discrete_space_information/environment_navxythetalat.h>
@@ -79,7 +80,7 @@ EnvironmentNAVXYTHETALATTICE::EnvironmentNAVXYTHETALATTICE()
 
 EnvironmentNAVXYTHETALATTICE::~EnvironmentNAVXYTHETALATTICE()
 {
-    SBPL_PRINTF("destroying XYTHETALATTICE\n");
+    // SBPL_PRINTF("destroying XYTHETALATTICE\n");
     if (grid2Dsearchfromstart != NULL) {
         delete grid2Dsearchfromstart;
     }
@@ -750,7 +751,7 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
     int dTemp;
     int totalNumofActions = 0;
 
-    SBPL_INFO("Reading in motion primitives...");
+    // SBPL_INFO("Reading in motion primitives...");
     fflush(stdout);
 
     //read in the resolution
@@ -771,7 +772,7 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
         fflush(stdout);
         return false;
     }
-    SBPL_INFO("resolution_m: %f\n", fTemp);
+    // SBPL_INFO("resolution_m: %f\n", fTemp);
 
     if (fscanf(fMotPrims, "%s", sTemp) == 0) {
         return false;
@@ -780,7 +781,7 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
     if (strncmp(sTemp, "min_turning_radius_m:", 21) == 0) {
         bUseNonUniformAngles = true;
     }
-    SBPL_INFO("bUseNonUniformAngles = %d", bUseNonUniformAngles);
+    // SBPL_INFO("bUseNonUniformAngles = %d", bUseNonUniformAngles);
 
     if (bUseNonUniformAngles) {
         float min_turn_rad;
@@ -813,7 +814,7 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
         SBPL_ERROR("ERROR: invalid angular resolution %d angles (instead of %d angles) in the motion primitives file\n", dTemp, EnvNAVXYTHETALATCfg.NumThetaDirs);
         return false;
     }
-    SBPL_PRINTF("numberofangles: %d\n", dTemp);
+    // SBPL_PRINTF("numberofangles: %d\n", dTemp);
     EnvNAVXYTHETALATCfg.NumThetaDirs = dTemp;
 
     if (bUseNonUniformAngles) {
@@ -855,19 +856,18 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
     if (fscanf(fMotPrims, "%d", &totalNumofActions) == 0) {
         return false;
     }
-    SBPL_PRINTF("totalnumberofprimitives: %d\n", totalNumofActions);
+    // SBPL_PRINTF("totalnumberofprimitives: %d\n", totalNumofActions);
 
     // Read in motion primitive for each action
     for (int i = 0; i < totalNumofActions; i++) {
         SBPL_xytheta_mprimitive motprim;
-
         if (!EnvironmentNAVXYTHETALATTICE::ReadinMotionPrimitive(&motprim, fMotPrims)) {
             return false;
         }
 
         EnvNAVXYTHETALATCfg.mprimV.push_back(motprim);
     }
-    SBPL_PRINTF("done");
+    // SBPL_PRINTF("done");
     SBPL_FFLUSH(stdout);
     return true;
 }
@@ -1020,7 +1020,7 @@ void EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithBaseMotionPrimitive(
 
     //iterate over source angles
     for (int tind = 0; tind < EnvNAVXYTHETALATCfg.NumThetaDirs; tind++) {
-        SBPL_PRINTF("pre-computing for angle %d out of %d angles\n", tind, EnvNAVXYTHETALATCfg.NumThetaDirs);
+        // SBPL_PRINTF("pre-computing for angle %d out of %d angles\n", tind, EnvNAVXYTHETALATCfg.NumThetaDirs);
         EnvNAVXYTHETALATCfg.ActionsV[tind] = new EnvNAVXYTHETALATAction_t[motionprimitiveV->size()];
 
         //compute sourcepose
@@ -1125,7 +1125,7 @@ void EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithBaseMotionPrimitive(
 void EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithCompleteMotionPrimitive(
     std::vector<SBPL_xytheta_mprimitive>* motionprimitiveV)
 {
-    SBPL_PRINTF("Pre-computing action data using motion primitives for every angle...\n");
+    // SBPL_PRINTF("Pre-computing action data using motion primitives for every angle...\n");
     EnvNAVXYTHETALATCfg.ActionsV = new EnvNAVXYTHETALATAction_t*[EnvNAVXYTHETALATCfg.NumThetaDirs];
     EnvNAVXYTHETALATCfg.PredActionsV = new std::vector<EnvNAVXYTHETALATAction_t*>[EnvNAVXYTHETALATCfg.NumThetaDirs];
     std::vector<sbpl_2Dcell_t> footprint;
@@ -1139,7 +1139,7 @@ void EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithCompleteMotionPrimitive(
     // iterate over source angles
     int maxnumofactions = 0;
     for (int tind = 0; tind < EnvNAVXYTHETALATCfg.NumThetaDirs; tind++) {
-        SBPL_PRINTF("pre-computing for angle %d out of %d angles\n", tind, EnvNAVXYTHETALATCfg.NumThetaDirs);
+        // SBPL_PRINTF("pre-computing for angle %d out of %d angles\n", tind, EnvNAVXYTHETALATCfg.NumThetaDirs);
 
         EnvNAVXYTHETALATCfg.ActionsV[tind] = new EnvNAVXYTHETALATAction_t[EnvNAVXYTHETALATCfg.actionwidth];
 
@@ -1282,7 +1282,7 @@ void EnvironmentNAVXYTHETALATTICE::PrecomputeActionswithCompleteMotionPrimitive(
     // now compute replanning data
     ComputeReplanningData();
 
-    SBPL_PRINTF("done pre-computing action data based on motion primitives\n");
+    // SBPL_PRINTF("done pre-computing action data based on motion primitives\n");
 }
 
 void EnvironmentNAVXYTHETALATTICE::DeprecatedPrecomputeActions()
@@ -1467,11 +1467,11 @@ void EnvironmentNAVXYTHETALATTICE::InitializeEnvConfig(std::vector<SBPL_xytheta_
             &footprint,
             temppose,
             EnvNAVXYTHETALATCfg.cellsize_m);
-    SBPL_PRINTF("number of cells in footprint of the robot = %d\n", (unsigned int)footprint.size());
+    // SBPL_PRINTF("number of cells in footprint of the robot = %d\n", (unsigned int)footprint.size());
 
-    for (std::vector<sbpl_2Dcell_t>::iterator it = footprint.begin(); it != footprint.end(); ++it) {
-        SBPL_PRINTF("Footprint cell at (%d, %d)\n", it->x, it->y);
-    }
+    // for (std::vector<sbpl_2Dcell_t>::iterator it = footprint.begin(); it != footprint.end(); ++it) {
+    //     SBPL_PRINTF("Footprint cell at (%d, %d)\n", it->x, it->y);
+    // }
 
 #if DEBUG
     SBPL_FPRINTF(fDeb, "footprint cells (size=%d):\n", (int)footprint.size());
@@ -1796,7 +1796,7 @@ void EnvironmentNAVXYTHETALATTICE::EnsureHeuristicsUpdated(bool bGoalHeuristics)
 void EnvironmentNAVXYTHETALATTICE::ComputeHeuristicValues()
 {
     // whatever necessary pre-computation of heuristic values is done here
-    SBPL_PRINTF("Precomputing heuristics...\n");
+    // SBPL_PRINTF("Precomputing heuristics...\n");
 
     // allocated 2D grid searches
     grid2Dsearchfromstart = new SBPL2DGridSearch(
@@ -1946,18 +1946,18 @@ bool EnvironmentNAVXYTHETALATTICE::InitializeEnv(
     unsigned char obsthresh,
     const char* sMotPrimFile)
 {
-    SBPL_PRINTF("env: initialize with width=%d height=%d start=%.3f %.3f %.3f "
-                "goalx=%.3f %.3f %.3f cellsize=%.3f nomvel=%.3f timetoturn=%.3f, obsthresh=%d\n",
-                width, height, startx, starty, starttheta, goalx, goaly, goaltheta, cellsize_m, nominalvel_mpersecs,
-                timetoturn45degsinplace_secs, obsthresh);
+    // SBPL_PRINTF("env: initialize with width=%d height=%d start=%.3f %.3f %.3f "
+                // "goalx=%.3f %.3f %.3f cellsize=%.3f nomvel=%.3f timetoturn=%.3f, obsthresh=%d\n",
+                // width, height, startx, starty, starttheta, goalx, goaly, goaltheta, cellsize_m, nominalvel_mpersecs,
+                // timetoturn45degsinplace_secs, obsthresh);
 
-    SBPL_PRINTF("NOTE: goaltol parameters currently unused\n");
+    // SBPL_PRINTF("NOTE: goaltol parameters currently unused\n");
 
-    SBPL_PRINTF("perimeter has size=%d\n", (unsigned int)perimeterptsV.size());
+    // SBPL_PRINTF("perimeter has size=%d\n", (unsigned int)perimeterptsV.size());
 
-    for (int i = 0; i < (int)perimeterptsV.size(); i++) {
-        SBPL_PRINTF("perimeter(%d) = %.4f %.4f\n", i, perimeterptsV.at(i).x, perimeterptsV.at(i).y);
-    }
+    // for (int i = 0; i < (int)perimeterptsV.size(); i++) {
+    //     SBPL_PRINTF("perimeter(%d) = %.4f %.4f\n", i, perimeterptsV.at(i).x, perimeterptsV.at(i).y);
+    // }
 
     EnvNAVXYTHETALATCfg.obsthresh = obsthresh;
     EnvNAVXYTHETALATCfg.cellsize_m = cellsize_m;
@@ -2265,7 +2265,7 @@ bool EnvironmentNAVXYTHETALATTICE::SetEnvParameter(
         return false;
     }
 
-    SBPL_PRINTF("setting parameter %s to %d\n", parameter, value);
+    // SBPL_PRINTF("setting parameter %s to %d\n", parameter, value);
 
     if (strcmp(parameter, "cost_inscribed_thresh") == 0) {
         if (value < 0 || value > 255) {
@@ -2316,7 +2316,7 @@ int EnvironmentNAVXYTHETALATTICE::GetEnvParameter(const char* parameter)
 
 EnvironmentNAVXYTHETALAT::~EnvironmentNAVXYTHETALAT()
 {
-    SBPL_PRINTF("destroying XYTHETALAT\n");
+    // SBPL_PRINTF("destroying XYTHETALAT\n");
 
     // delete the states themselves first
     for (int i = 0; i < (int)StateID2CoordTable.size(); i++) {
@@ -2508,7 +2508,7 @@ int EnvironmentNAVXYTHETALAT::SetGoal(double x_m, double y_m, double theta_rad)
     int y = CONTXY2DISC(y_m, EnvNAVXYTHETALATCfg.cellsize_m);
     int theta = ContTheta2DiscNew(theta_rad);
 
-    SBPL_PRINTF("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
+    // SBPL_PRINTF("env: setting goal to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
 
     if (!IsWithinMapCell(x, y)) {
         SBPL_ERROR("ERROR: trying to set a goal cell %d %d that is outside of map\n", x, y);
@@ -2555,7 +2555,7 @@ int EnvironmentNAVXYTHETALAT::SetStart(double x_m, double y_m, double theta_rad)
         return -1;
     }
 
-    SBPL_PRINTF("env: setting start to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
+    // SBPL_PRINTF("env: setting start to %.3f %.3f %.3f (%d %d %d)\n", x_m, y_m, theta_rad, x, y, theta);
 
     if (!IsValidConfiguration(x, y, theta)) {
         SBPL_PRINTF("WARNING: start configuration %d %d %d is invalid\n", x, y, theta);
@@ -3017,7 +3017,7 @@ void EnvironmentNAVXYTHETALAT::InitializeEnvironment()
     int maxsize = EnvNAVXYTHETALATCfg.EnvWidth_c * EnvNAVXYTHETALATCfg.EnvHeight_c * EnvNAVXYTHETALATCfg.NumThetaDirs;
 
     if (maxsize <= SBPL_XYTHETALAT_MAXSTATESFORLOOKUP) {
-        SBPL_PRINTF("environment stores states in lookup table\n");
+        // SBPL_PRINTF("environment stores states in lookup table\n");
 
         Coord2StateIDHashTable_lookup = new EnvNAVXYTHETALATHashEntry_t*[maxsize];
         for (int i = 0; i < maxsize; i++) {
@@ -3031,7 +3031,7 @@ void EnvironmentNAVXYTHETALAT::InitializeEnvironment()
         Coord2StateIDHashTable = NULL;
     }
     else {
-        SBPL_PRINTF("environment stores states in hashtable\n");
+        // SBPL_PRINTF("environment stores states in hashtable\n");
 
         // initialize the map from Coord to StateID
         HashTableSize = 4 * 1024 * 1024; // should be power of two

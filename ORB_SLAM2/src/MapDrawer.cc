@@ -56,7 +56,8 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
       mCloud(new pcl::PointCloud<pcl::PointXYZ>()),
       mfHeightUpperBound(1.0),
-      mfHeightLowerBound(-0.2)
+      mfHeightLowerBound(-0.2),
+      mbXYThetaPlan(false)
 {
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     if (!fSettings.isOpened())
@@ -70,18 +71,48 @@ MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     mPointSize = fSettings["Viewer.PointSize"];
     mCameraSize = fSettings["Viewer.CameraSize"];
     mCameraLineWidth = fSettings["Viewer.CameraLineWidth"];
+    int xythetaPlane = fSettings["XYThetaPlan"];
+    if (xythetaPlane != 0)
+    {
+        mbXYThetaPlan = true;
+    }
     mbCalPointCloud = true;
     mbFindObjCalPoints = true;
     std::string planner = static_cast<std::string> (fSettings["PathPlanningPlanner"]);
-    float obstacleWidth = fSettings["RobotRadius"];
-    mPathPlanning = std::make_shared<PathPlanning2D> (planner,
-                                                      mPointSize * 6.0,
-                                                      mKeyFrameLineWidth * 4.0,
-                                                      obstacleWidth,
-                                                      0.025,
-                                                      mpMap->msDataFolder,
-                                                      mfHeightUpperBound,
-                                                      mfHeightLowerBound);
+    float gridSize = static_cast<float>(fSettings["GridSize"]);
+    if (gridSize <= 0)
+    {
+        std::cout << "\x1B[31m" << "GridSize must be greater than 0 !!!" << "\x1B[0m" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (mbXYThetaPlan)
+    {
+        float robotHalfLength = fSettings["RobotHalfLength"];
+        float robotHalfWidth = fSettings["RobotHalfWidth"];
+        mPathPlanningXYTheta = std::make_shared<PathPlanning2DXYTheta> (planner,
+                                                                        mPointSize * 6.0,
+                                                                        mKeyFrameLineWidth * 4.0,
+                                                                        gridSize,
+                                                                        mpMap->msDataFolder,
+                                                                        robotHalfLength,
+                                                                        robotHalfWidth,
+                                                                        mfHeightUpperBound,
+                                                                        mfHeightLowerBound);
+    }
+    else
+    {
+        float obstacleWidth = fSettings["RobotRadius"];
+        mPathPlanning = std::make_shared<PathPlanning2D> (planner,
+                                                          mPointSize * 6.0,
+                                                          mKeyFrameLineWidth * 4.0,
+                                                          obstacleWidth,
+                                                          gridSize,
+                                                          mpMap->msDataFolder,
+                                                          mfHeightUpperBound,
+                                                          mfHeightLowerBound);
+    }
+
+
     mpSolution = std::make_shared<std::vector<std::vector<float> > >();
 }
 
@@ -165,12 +196,19 @@ void MapDrawer::FindObjects()
 {
     if (mbFindObjCalPoints)
     {
-        mPathPlanning->reset();
+        if (mbXYThetaPlan)
+        {
+            mPathPlanningXYTheta->reset();
+        }
+        else{
+            mPathPlanning->reset();
+        }
         CalPointCloud();
 
         // get current camera center position
         cv::Mat Rwc(3, 3, CV_32F);
         cv::Mat twc(3, 1, CV_32F);
+
         std::vector<float> start(2, 0);
 
         if (!mCameraPose.empty())
@@ -182,14 +220,27 @@ void MapDrawer::FindObjects()
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> Etcw;
             cv::cv2eigen(mCameraPose.rowRange(0, 3).col(3), Etcw);
             Eigen::Vector3f Etwc = -ERwc * Etcw;
-            cv::eigen2cv(Etwc, twc);
-            float *it = twc.ptr<float>(0);
-            start[0] = it[0];
-            start[1] = it[2];
+
+            start[0] = Etwc(0);
+            start[1] = Etwc(2);
+            if (mbXYThetaPlan)
+            {
+                Eigen::Matrix3f rwc = ERwc;
+                Eigen::Quaternionf tQua;
+                tQua = rwc;
+                float yaw = 2 * atan2(tQua.y(), tQua.w());
+                start.push_back(yaw);
+//                Eigen::Vector3f ea = rwc.eulerAngles(1, 0, 2);
+//                start.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+            }
         }
         else
         {
-            std::cout << "Cannot locate the camera, assuming it's at the origin ..." << std::endl;
+            if (mbXYThetaPlan)
+            {
+                start.push_back(0);
+            }
+            std::cout << "\x1B[36m" << "Cannot locate the camera, assuming it's at the origin ..." << "\x1B[0m" << std::endl;
         }
 
 
@@ -246,9 +297,19 @@ void MapDrawer::FindObjects()
         std::cout << "Start position: " << start[0] << "  " << start[1] << std::endl;
         std::cout << "Target position: " << target[0] << "  " << target[1] << std::endl;
         mbFindObjCalPoints = false;
-        if (mPathPlanning->PlanPath(start, target, mCloud))
+        if (mbXYThetaPlan)
         {
-            UpdateSolution(mPathPlanning->mpSolution);
+            if (mPathPlanningXYTheta->PlanPath(start, target, mCloud))
+            {
+                UpdateSolution(mPathPlanningXYTheta->mpSolution);
+            }
+        }
+        else
+        {
+            if (mPathPlanning->PlanPath(start, target, mCloud))
+            {
+                UpdateSolution(mPathPlanning->mpSolution);
+            }
         }
 
     }
@@ -267,10 +328,14 @@ void MapDrawer::FindObjects()
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> Etcw;
             cv::cv2eigen(mCameraPose.rowRange(0, 3).col(3), Etcw);
             Eigen::Vector3f Etwc = -ERwc * Etcw;
-            cv::eigen2cv(Etwc, twc);
-            float *it = twc.ptr<float>(0);
-            cameraCenter[0] = it[0];
-            cameraCenter[1] = it[2];
+            cameraCenter[0] = Etwc(0);
+            cameraCenter[1] = Etwc(2);
+            if (mbXYThetaPlan)
+            {
+                Eigen::Matrix3f rwc = ERwc;
+                Eigen::Vector3f ea = rwc.eulerAngles(2, 0, 1);
+                cameraCenter.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+            }
         }
         float fToTargetX = cameraCenter[0] - mpSolution->back()[0];
         float fToTargetZ = cameraCenter[1] - mpSolution->back()[1];
@@ -278,13 +343,42 @@ void MapDrawer::FindObjects()
         float fToTargetDistance = sqrt(fToTargetDistanceSquared);
         if (fToTargetDistance < 0.5)
         {
-            std::cout << "\x1B[35m" << "Fetch object: close to target,  distance: " << fToTargetDistance
-                      << "\x1B[0m" << std::endl;
-            unique_lock<mutex> lock(mMutexPath);
-            mpSolution->clear();
+            bool clearPath = true;
+            if (mbXYThetaPlan)
+            {
+                float fToTargetAngle = cameraCenter[2] - mpSolution->back()[2];
+                while (fToTargetAngle < -M_PI)
+                {
+                    fToTargetAngle += 2 * M_PI;
+                }
+                while (fToTargetAngle > M_PI)
+                {
+                    fToTargetAngle -= 2 * M_PI;
+                }
+                if (fabs(fToTargetAngle) > 0.2)
+                {
+                    clearPath = false;
+                }
+            }
+            if (clearPath)
+            {
+                std::cout << "\x1B[35m" << "Fetch object: close to target,  distance: " << fToTargetDistance
+                          << "\x1B[0m" << std::endl;
+                unique_lock<mutex> lock(mMutexPath);
+                mpSolution->clear();
+            }
+
         }
     }
-    mPathPlanning->ShowPlannedPath();
+    if (mbXYThetaPlan)
+    {
+        mPathPlanningXYTheta->ShowPlannedPath();
+    }
+    else
+    {
+        mPathPlanning->ShowPlannedPath();
+    }
+
 }
 
 void MapDrawer::GetPath(std::vector<std::vector<float> > &path)

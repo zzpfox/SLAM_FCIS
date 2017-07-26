@@ -2,6 +2,7 @@
 #include <opencv2/core/eigen.hpp>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <boost/math/constants/constants.hpp>
 #include <cmath>
 #include <chrono>
 #include <thread>
@@ -17,26 +18,50 @@ AutoBuildMap::AutoBuildMap(System *pSystem,
     mpSystem(pSystem),
     mpTracker(pTracking),
     mpMapDrawer(pMapDrawer),
-    mfcLeafSize(0.025),
     mfHeightUpperBound(1.0),
     mfHeightLowerBound(-0.2),
-    mbAutoDone(false)
+    mbAutoDone(false),
+    mbXYThetaPlan(false)
 {
     mvBounds = std::vector<float>(4, 0.0);
     std::string planner = static_cast<std::string> (fSettings["AutoBuildMapPathPlanner"]);
     mLineWidth = fSettings["Viewer.KeyFrameLineWidth"];
     mPointSize = fSettings["Viewer.PointSize"];
-    mfObstacleWidth = fSettings["RobotRadius"];
+
+    mfcGridSize = fSettings["GridSize"];
     mLineWidth *= 4.0;
     mPointSize *= 6.0;
-    mptPathPlanning = std::make_shared<PathPlanning2D>(planner,
-                                                       mPointSize,
-                                                       mLineWidth,
-                                                       mfObstacleWidth,
-                                                       mfcLeafSize,
-                                                       mpTracker->msDataFolder,
-                                                       mfHeightUpperBound,
-                                                       mfHeightLowerBound);
+    int xythetaPlane = fSettings["XYThetaPlan"];
+    if (xythetaPlane != 0) {
+        mbXYThetaPlan = true;
+    }
+
+    if (mbXYThetaPlan) {
+        mfRobotHalfLength = fSettings["RobotHalfLength"];
+        mfRobotHalfWidth = fSettings["RobotHalfWidth"];
+        SetupRobot();
+        mptPathPlanningXYTheta = std::make_shared<PathPlanning2DXYTheta>(planner,
+                                                                         mPointSize,
+                                                                         mLineWidth,
+                                                                         mfcGridSize,
+                                                                         mpTracker->msDataFolder,
+                                                                         mfRobotHalfLength,
+                                                                         mfRobotHalfWidth,
+                                                                         mfHeightUpperBound,
+                                                                         mfHeightLowerBound);
+    }
+    else {
+        mfObstacleWidth = fSettings["RobotRadius"];
+        mptPathPlanning = std::make_shared<PathPlanning2D>(planner,
+                                                           mPointSize,
+                                                           mLineWidth,
+                                                           mfObstacleWidth,
+                                                           mfcGridSize,
+                                                           mpTracker->msDataFolder,
+                                                           mfHeightUpperBound,
+                                                           mfHeightLowerBound);
+    }
+
     mpSolution = std::make_shared<std::vector<std::vector<float> > >();
 }
 
@@ -54,9 +79,9 @@ void AutoBuildMap::Run()
             int count = 0;
             while (!PlanPath()) {
                 count++;
-                if (count >= 2) {
+                if (count >= 4) {
                     EnsureAllAreasChecked();
-                    if (!GoToStartPosition()){
+                    if (!GoToStartPosition()) {
                         std::cout << "cannot go back to starting position" << std::endl;
                     }
                     SaveMap();
@@ -93,6 +118,8 @@ void AutoBuildMap::EnsureAllAreasChecked()
     std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
     std::vector<float> target;
     int count = 0;
+    int closeToTargetNumSameTarget = 0;
+
     while (true) {
         {
             unique_lock<mutex> lock(mMutexPath);
@@ -100,12 +127,19 @@ void AutoBuildMap::EnsureAllAreasChecked()
         }
         std::cout << "\x1B[32m" << "calculating new target ..." << "\x1B[0m" << std::endl;
         mpMapDrawer->CalPointCloud();
-        if (mptPathPlanning->UnvisitedAreasToGo(target, mpMapDrawer->mCloud)) {
+        bool bGetNewTarget;
+        if (mbXYThetaPlan) {
+            bGetNewTarget = mptPathPlanningXYTheta->UnvisitedAreasToGo(target, mpMapDrawer->mCloud);
+        }
+        else {
+            bGetNewTarget = mptPathPlanning->UnvisitedAreasToGo(target, mpMapDrawer->mCloud);
+        }
+        if (bGetNewTarget) {
             std::cout << "\x1B[32m" << " new target is: " << target[0] << "  " << target[1]
                       << "\x1B[0m" << std::endl;
             if (PlanPath(target)) {
                 while (true) {
-                    if (CloseToTarget(target, 0.9)) {
+                    if (CloseToTarget(target, 0.5)) {
                         break;
                     }
                     if (NeedReplanPath()) {
@@ -115,7 +149,12 @@ void AutoBuildMap::EnsureAllAreasChecked()
                     }
                 }
             }
-            mptPathPlanning->reset(false);
+            if (mbXYThetaPlan) {
+                mptPathPlanningXYTheta->reset(false);
+            }
+            else {
+                mptPathPlanning->reset(false);
+            }
             std::cout << "\x1B[32m" << " target[ " << target[0] << "  " << target[1] <<
                       " ] finished ..." << "\x1B[0m" << std::endl;
         }
@@ -148,8 +187,14 @@ bool AutoBuildMap::CloseToTarget(std::vector<float> &target, float disThresh)
     float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
     if (fToTargetDistanceSquared < pow(disThresh, 2.0)) // if the camera is close to the target, replan
     {
-        std::cout << "close to target " << std::endl;
-        mptPathPlanning->reset(false);
+        std::cout << "robot is close to target " << std::endl;
+        if (mbXYThetaPlan) {
+            mptPathPlanningXYTheta->reset(false);
+        }
+        else {
+            mptPathPlanning->reset(false);
+        }
+
         return true;
     }
     else {
@@ -177,10 +222,22 @@ bool AutoBuildMap::GoToStartPosition()
     }
     std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
     std::vector<float> target = {0, 0};
-    bool bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
+    bool bFindPath;
+    if (mbXYThetaPlan) {
+        bFindPath = mptPathPlanningXYTheta->PlanPath(start, target, mpMapDrawer->mCloud);
+    }
+    else {
+        bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
+
+    }
     if (bFindPath) {
-        UpdateSolution(mptPathPlanning->mpSolution);
-        while (!CloseToTarget(target, 0.5)) {
+        if (mbXYThetaPlan) {
+            UpdateSolution(mptPathPlanningXYTheta->mpSolution);
+        }
+        else {
+            UpdateSolution(mptPathPlanning->mpSolution);
+        }
+        while (!CloseToTarget(target, 0.7)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             if (NeedReplanPath()) {
                 if (!PlanPath(target)) {
@@ -191,22 +248,38 @@ bool AutoBuildMap::GoToStartPosition()
         {
             unique_lock<mutex> lock(mMutexPath);
             mpSolution->clear();
+            // tell the robot to perform a zero-radius turning
             std::vector<float> rotatingCommand = {-1, -1};
             mpSolution->push_back(rotatingCommand);
         }
+        std::chrono::time_point<std::chrono::system_clock> start;
+        std::chrono::time_point<std::chrono::system_clock> end;
+        start = std::chrono::system_clock::now();
+        bool noLoopDetected = false;
+        double maxWaitTime = 20;
         // wait for global BA
         while (!mpSystem->mpLoopCloser->mbRunningGBA) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        };
+            end = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed_seconds = end - start;
+            if (elapsed_seconds.count() >= maxWaitTime) {
+                noLoopDetected = true;
+                std::cout << "No loop detected in " << maxWaitTime << " s ..." << std::endl;
+                break;
+            }
+        }
         {
             unique_lock<mutex> lock(mMutexPath);
             mpSolution->clear();
+            // tell the robot to stop
             std::vector<float> stoppingCommand = {-2, -2};
             mpSolution->push_back(stoppingCommand);
         }
-        while (!mpSystem->mpLoopCloser->mbFinishedGBA) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        };
+        if (!noLoopDetected) {
+            while (!mpSystem->mpLoopCloser->mbFinishedGBA) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
     }
     return bFindPath;
 }
@@ -223,6 +296,7 @@ bool AutoBuildMap::PlanPath()
     mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
+    std::vector<float> start;
     {
         unique_lock<mutex> lock(mMutexFrame);
         if (mCameraCenter.total() != 3) {
@@ -232,13 +306,35 @@ bool AutoBuildMap::PlanPath()
         float *it = mCameraCenter.ptr<float>(0);
         fCameraCenterX = it[0];
         fCameraCenterZ = it[2];
+        start.push_back(fCameraCenterX);
+        start.push_back(fCameraCenterZ);
+        if (mbXYThetaPlan)
+        {
+            cv::Mat Rwc = mTwc.rowRange(0, 3).colRange(0, 3);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
+            cv::cv2eigen(Rwc, ERwc);
+            Eigen::Matrix3f rwc = ERwc;
+            Eigen::Vector3f ea = rwc.eulerAngles(2, 0, 1);
+            start.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+        }
+
     }
-    std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
-    mptPathPlanning->reset(false);
-    bool bFindPath = mptPathPlanning->PlanPath(start, mpMapDrawer->mCloud);
-    if (bFindPath) {
-        UpdateSolution(mptPathPlanning->mpSolution);
+    bool bFindPath;
+    if (mbXYThetaPlan) {
+        mptPathPlanningXYTheta->reset(false);
+        bFindPath = mptPathPlanningXYTheta->PlanPath(start, mpMapDrawer->mCloud);
+        if (bFindPath) {
+            UpdateSolution(mptPathPlanningXYTheta->mpSolution);
+        }
     }
+    else {
+        mptPathPlanning->reset(false);
+        bFindPath = mptPathPlanning->PlanPath(start, mpMapDrawer->mCloud);
+        if (bFindPath) {
+            UpdateSolution(mptPathPlanning->mpSolution);
+        }
+    }
+
     return bFindPath;
 }
 
@@ -248,6 +344,7 @@ bool AutoBuildMap::PlanPath(std::vector<float> &target)
 //    mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
+    std::vector<float> start;
     {
         unique_lock<mutex> lock(mMutexFrame);
         if (mCameraCenter.total() != 3) {
@@ -257,12 +354,33 @@ bool AutoBuildMap::PlanPath(std::vector<float> &target)
         float *it = mCameraCenter.ptr<float>(0);
         fCameraCenterX = it[0];
         fCameraCenterZ = it[2];
+        start.push_back(fCameraCenterX);
+        start.push_back(fCameraCenterZ);
+        if (mbXYThetaPlan)
+        {
+            cv::Mat Rwc = mTwc.rowRange(0, 3).colRange(0, 3);
+            Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
+            cv::cv2eigen(Rwc, ERwc);
+            Eigen::Matrix3f rwc = ERwc;
+            Eigen::Vector3f ea = rwc.eulerAngles(2, 0, 1);
+            start.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+        }
+
     }
-    std::vector<float> start = {fCameraCenterX, fCameraCenterZ};
-    mptPathPlanning->reset(false);
-    bool bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
-    if (bFindPath) {
-        UpdateSolution(mptPathPlanning->mpSolution);
+    bool bFindPath;
+    if (mbXYThetaPlan) {
+        mptPathPlanningXYTheta->reset(false);
+        bFindPath = mptPathPlanningXYTheta->PlanPath(start, target, mpMapDrawer->mCloud);
+        if (bFindPath) {
+            UpdateSolution(mptPathPlanningXYTheta->mpSolution);
+        }
+    }
+    else {
+        mptPathPlanning->reset(false);
+        bFindPath = mptPathPlanning->PlanPath(start, target, mpMapDrawer->mCloud);
+        if (bFindPath) {
+            UpdateSolution(mptPathPlanning->mpSolution);
+        }
     }
     return bFindPath;
 }
@@ -295,7 +413,12 @@ void AutoBuildMap::Show2DMap()
         }
     }
     glEnd();
-    mptPathPlanning->ShowPlannedPath();
+    if (mbXYThetaPlan) {
+        mptPathPlanningXYTheta->ShowPlannedPath();
+    }
+    else {
+        mptPathPlanning->ShowPlannedPath();
+    }
 
 }
 
@@ -335,11 +458,18 @@ bool AutoBuildMap::NeedReplanPath()
     if (mpSolution && mpSolution->size() > 0) {
         vStart = (*mpSolution)[0];
     }
-    std::vector<float> vTargetW = mptPathPlanning->GetTargetW();
+    std::vector<float> vTargetW;
+    if (mbXYThetaPlan) {
+        vTargetW = mptPathPlanningXYTheta->GetTargetW();
+    }
+    else {
+        vTargetW = mptPathPlanning->GetTargetW();
+    }
+
     float fToTargetX = vTargetW[0] - fCameraCenterX;
     float fToTargetZ = vTargetW[1] - fCameraCenterZ;
     float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
-    if (fToTargetDistanceSquared < 0.36) // if the camera is close to the target, replan
+    if (fToTargetDistanceSquared < 0.25) // if the camera is close to the target, replan
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         std::cout << "close to target " << std::endl;
@@ -375,8 +505,7 @@ bool AutoBuildMap::NeedReplanPath()
             }
         }
     }
-    if (pCurrentFrameCloud->points.size() <= 0)
-    {
+    if (pCurrentFrameCloud->points.size() <= 0) {
         return false;
     }
 //    cout << "Current Frame Original Cloud Size:" << pCurrentFrameCloud->points.size() << endl;
@@ -394,22 +523,19 @@ bool AutoBuildMap::NeedReplanPath()
     voxelFilter.filter(*cloudVoxel);
 //    cout << "Current Frame Cloud Size After Voxel Filter:" << cloudVoxel->points.size() << endl;
 
-    if (cloudVoxel->points.size() > 0)
-    {
-        std::vector<std::vector<float> > vXYZCoords(3, std::vector<float> ());
-        std::vector<std::vector<float> > vIQRBounds(3, std::vector<float> (2, 0));
-        for (auto &p : cloudVoxel->points)
-        {
+    if (cloudVoxel->points.size() > 0) {
+        std::vector<std::vector<float> > vXYZCoords(3, std::vector<float>());
+        std::vector<std::vector<float> > vIQRBounds(3, std::vector<float>(2, 0));
+        for (auto &p : cloudVoxel->points) {
             vXYZCoords[0].push_back(p.x);
             vXYZCoords[1].push_back(p.y);
             vXYZCoords[2].push_back(p.z);
         }
-        for (int i = 0; i < vXYZCoords.size(); i++)
-        {
+        for (int i = 0; i < vXYZCoords.size(); i++) {
             std::vector<float> &vCoords = vXYZCoords[i];
             auto const Q1 = vCoords.size() / 4;
             auto const Q3 = vCoords.size() * 3 / 4;
-            std::nth_element(vCoords.begin(),          vCoords.begin() + Q1, vCoords.end());
+            std::nth_element(vCoords.begin(), vCoords.begin() + Q1, vCoords.end());
             std::nth_element(vCoords.begin() + Q1 + 1, vCoords.begin() + Q3, vCoords.end());
             float q25 = *(vCoords.begin() + Q1);
             float q75 = *(vCoords.begin() + Q3);
@@ -420,19 +546,16 @@ bool AutoBuildMap::NeedReplanPath()
             vIQRBounds[i][1] = upperBound;
         }
         cloudIQRFilter->points.clear();
-        for (auto &p : cloudVoxel->points)
-        {
+        for (auto &p : cloudVoxel->points) {
             if (p.x >= vIQRBounds[0][0] && p.x <= vIQRBounds[0][1] &&
                 p.y >= vIQRBounds[1][0] && p.y <= vIQRBounds[1][1] &&
-                p.z >= vIQRBounds[2][0] && p.z <= vIQRBounds[2][1])
-            {
+                p.z >= vIQRBounds[2][0] && p.z <= vIQRBounds[2][1]) {
                 cloudIQRFilter->points.push_back(p);
             }
         }
 //    cout << "Current Frame Cloud Size After IQR Filter:" << cloudIQRFilter->points.size() << endl;
     }
-    else
-    {
+    else {
         cloudIQRFilter = cloudVoxel;
     }
 
@@ -450,12 +573,13 @@ bool AutoBuildMap::NeedReplanPath()
     {
         unique_lock<mutex> lock(mMutexObstacle);
         mObstacles = std::vector<std::vector<int> >(mnSizeY, std::vector<int>(mnSizeX, 0));
-        double radiusSquared = pow(mfObstacleWidth, 2.0);
+        double radius = mbXYThetaPlan ? std::min(mfRobotHalfLength, mfRobotHalfWidth) / mfcGridSize : mfObstacleWidth;
+        double radiusSquared = pow(radius, 2.0);
         for (auto p : pCurrentFrameCloud->points) {
-            int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcLeafSize);
-            int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcLeafSize);
-            for (int i = nTmpX - mfObstacleWidth; i <= nTmpX + mfObstacleWidth; i++) {
-                for (int j = nTmpY - mfObstacleWidth; j <= nTmpY + mfObstacleWidth; j++) {
+            int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcGridSize);
+            int nTmpY = static_cast<int>((p.z - mvBounds[2]) / mfcGridSize);
+            for (int i = nTmpX - radius; i <= nTmpX + radius; i++) {
+                for (int j = nTmpY - radius; j <= nTmpY + radius; j++) {
                     if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY) {
                         if (pow(i - nTmpX, 2.0) + pow(j - nTmpY, 2.0) <= radiusSquared) {
                             mObstacles[j][i] = 1;
@@ -465,8 +589,10 @@ bool AutoBuildMap::NeedReplanPath()
                 }
             }
         }
-    }
 
+    }
+    int obstacleCount = 0;
+    int obstacleCountThreshold = 25;
     for (std::vector<std::vector<float> >::iterator it = mpSolution->begin();
          it != mpSolution->end(); it++) {
         std::vector<int> solutionInGrid;
@@ -474,8 +600,29 @@ bool AutoBuildMap::NeedReplanPath()
         WorldToGrid(solutionInWorld, solutionInGrid);
         if (solutionInGrid[0] >= 0 && solutionInGrid[0] < mObstacles[0].size() &&
             solutionInGrid[1] >= 0 && solutionInGrid[1] < mObstacles.size()) {
-            if (mObstacles[solutionInGrid[1]][solutionInGrid[0]] == 1) {
-                return true;
+            if (mbXYThetaPlan)
+            {
+                if (!IsStateValid(solutionInGrid[0], solutionInGrid[1], (*it)[2]));
+                {
+                    obstacleCount++;
+                    if (obstacleCount > obstacleCountThreshold)
+                    {
+                        std::cout << "possible collision detected ..." << std::endl;
+                        return true;
+                    }
+
+                }
+            }
+            else
+            {
+                if (mObstacles[solutionInGrid[1]][solutionInGrid[0]] == 1) {
+                    obstacleCount++;
+                    if (obstacleCount > obstacleCountThreshold)
+                    {
+                        std::cout << "possible collision detected ..." << std::endl;
+                        return true;
+                    }
+                }
             }
         }
     }
@@ -536,8 +683,8 @@ void AutoBuildMap::ShortenSolution()
 
 void AutoBuildMap::CalGridSize()
 {
-    mnSizeX = static_cast<int> ((mvBounds[1] - mvBounds[0]) / mfcLeafSize);
-    mnSizeY = static_cast<int> ((mvBounds[3] - mvBounds[2]) / mfcLeafSize);
+    mnSizeX = static_cast<int> ((mvBounds[1] - mvBounds[0]) / mfcGridSize);
+    mnSizeY = static_cast<int> ((mvBounds[3] - mvBounds[2]) / mfcGridSize);
 }
 
 void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<float> &vStart)
@@ -566,7 +713,7 @@ void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::
         mvBounds[2] = std::min(mvBounds[2], vStart[1]);
         mvBounds[3] = std::max(mvBounds[3], vStart[1]);
     }
-    float margin = mfObstacleWidth * mfcLeafSize + 0.2;
+    float margin = mfObstacleWidth * mfcGridSize + 0.2;
     mvBounds[0] -= margin;
     mvBounds[1] += margin;
     mvBounds[2] -= margin;
@@ -576,15 +723,128 @@ void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::
 void AutoBuildMap::WorldToGrid(std::vector<float> &input, std::vector<int> &output)
 {
     output.resize(2, 0);
-    output[0] = static_cast<int> ((input[0] - mvBounds[0]) / mfcLeafSize);
-    output[1] = static_cast<int> ((input[1] - mvBounds[2]) / mfcLeafSize);
+    output[0] = static_cast<int> ((input[0] - mvBounds[0]) / mfcGridSize);
+    output[1] = static_cast<int> ((input[1] - mvBounds[2]) / mfcGridSize);
 }
 
 void AutoBuildMap::GridToWorld(std::vector<int> &input, std::vector<float> &output)
 {
     output.resize(2, 0);
-    output[0] = input[0] * mfcLeafSize + mvBounds[0];
-    output[1] = input[1] * mfcLeafSize + mvBounds[2];
+    output[0] = input[0] * mfcGridSize + mvBounds[0];
+    output[1] = input[1] * mfcGridSize + mvBounds[2];
+}
+
+bool AutoBuildMap::IsStateValid(int x, int y, double yaw)
+{
+    if (yaw > boost::math::constants::pi<double>() || yaw <= -boost::math::constants::pi<double>())
+    {
+        return false;
+    }
+    Eigen::Vector2i center;
+    center << x , y;
+    std::vector<std::vector<std::vector<int> > > triangles;
+    Eigen::Matrix<double, 2, 4> robotCorners;
+    std::vector<int> bounds;
+    GetTriangles(center, yaw, triangles, robotCorners);
+    GetRobotBounds(robotCorners, bounds);
+    bool bCollision = RobotCollideObstacle(bounds, triangles);
+    return !bCollision;
+}
+
+bool AutoBuildMap::RobotCollideObstacle(std::vector<int> &bounds,
+                                        std::vector<std::vector<std::vector<int> > > &triangles)
+{
+    int obstacleCount = 0;
+    int obstacleThresh = 5;
+    for (int i = bounds[0]; i < bounds[1]; i++)
+    {
+        for (int j = bounds[2]; j < bounds[3]; j++)
+        {
+            if (mObstacles[j][i] == 1)
+            {
+                Eigen::Vector2i point;
+                point << i, j;
+                for (int k = 0; k < triangles.size(); k++)
+                {
+                    if (PointInTriangle(point, triangles[k]))
+                    {
+                        obstacleCount++;
+                        if (obstacleCount >= obstacleThresh)
+                        {
+                            return true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void AutoBuildMap::SetupRobot()
+{
+    Eigen::Matrix<float, 2, 4> robotCornersUnMoved;
+    robotCornersUnMoved << mfRobotHalfWidth, -mfRobotHalfWidth, -mfRobotHalfWidth, mfRobotHalfWidth,
+        mfRobotHalfLength, mfRobotHalfLength, -mfRobotHalfLength, -mfRobotHalfLength;
+    robotCornersUnMoved /= mfcGridSize;
+    mRobotCornersUnMoved = robotCornersUnMoved.cast<int>();
+}
+
+void AutoBuildMap::GetTriangles(Eigen::Vector2i &center,
+                                double angle,
+                                std::vector<std::vector<std::vector<int> > > &triangles,
+                                Eigen::Matrix<double, 2, 4> &robotCorners)
+{
+    triangles.clear();
+    Eigen::Rotation2D<double> rotMat(angle);
+    robotCorners = rotMat.toRotationMatrix() * mRobotCornersUnMoved.cast<double>();
+    robotCorners.colwise() += center.cast<double>();
+    std::vector<std::vector<int> > triangle(3, std::vector<int>(2, 0));
+    triangle[0][0] = robotCorners(0, 0);
+    triangle[0][1] = robotCorners(1, 0);
+    triangle[1][0] = robotCorners(0, 1);
+    triangle[1][1] = robotCorners(1, 1);
+    triangle[2][0] = robotCorners(0, 2);
+    triangle[2][1] = robotCorners(1, 2);
+    triangles.push_back(triangle);
+    triangle[1][0] = robotCorners(0, 3);
+    triangle[1][1] = robotCorners(1, 3);
+    triangles.push_back(triangle);
+}
+
+void AutoBuildMap::GetRobotBounds(Eigen::Matrix<double, 2, 4> &robotCorners,
+                                  std::vector<int> &bounds)
+{
+    bounds.resize(4, 0);
+    Eigen::Vector2d minCoord = robotCorners.rowwise().minCoeff();
+    Eigen::Vector2d maxCoord = robotCorners.rowwise().maxCoeff();
+    bounds[0] = std::max(0, static_cast<int>(minCoord(0)));
+    bounds[2] = std::max(0, static_cast<int>(minCoord(1)));
+    bounds[1] = std::min(static_cast<int>(mObstacles[0].size() - 1), static_cast<int>(maxCoord(0)));
+    bounds[3] = std::min(static_cast<int>(mObstacles.size() - 1), static_cast<int>(maxCoord(1)));
+}
+
+
+bool AutoBuildMap::PointInTriangle(Eigen::Vector2i &point, std::vector<std::vector<int> > triangle)
+{
+    // http://totologic.blogspot.com/2014/01/accurate-point-in-triangle-test.html
+    // as we are dealing with int type values, we are not considering the accurate checking process
+
+    int x = point(0);
+    int y = point(1);
+    int x1 = triangle[0][0];
+    int y1 = triangle[0][1];
+    int x2 = triangle[1][0];
+    int y2 = triangle[1][1];
+    int x3 = triangle[2][0];
+    int y3 = triangle[2][1];
+
+    double denominator = static_cast<double>((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
+    double a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denominator;
+    double b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denominator;
+    double c = 1 - a - b;
+    return a >= 0 && a <= 1 && 0 <= b && b <= 1 && 0 <= c && c <= 1;
 }
 
 }

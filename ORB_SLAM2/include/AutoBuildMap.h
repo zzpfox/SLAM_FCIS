@@ -3,7 +3,8 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <memory>
-#include "PathPlanning.h"
+#include "PathPlanning2D.h"
+#include "PathPlanning2DXYTheta.h"
 #include "MapDrawer.h"
 #include "Tracking.h"
 #include <mutex>
@@ -36,7 +37,17 @@ public:
     void ShortenSolution();
     void SetCurrentFrame(Frame &m);
     void GetPath(std::vector<std::vector<float> > &path);
-
+    bool IsStateValid(int x, int y, double yaw);
+    bool RobotCollideObstacle(std::vector<int> &bounds,
+                              std::vector<std::vector<std::vector<int> > > &triangles);
+    void SetupRobot();
+    void GetTriangles(Eigen::Vector2i &center,
+                      double angle,
+                      std::vector<std::vector<std::vector<int> > > &triangles,
+                      Eigen::Matrix<double, 2, 4> &robotCorners);
+    void GetRobotBounds(Eigen::Matrix<double, 2, 4> &robotCorners,
+                        std::vector<int> &bounds);
+    bool PointInTriangle(Eigen::Vector2i &point, std::vector<std::vector<int> > triangle);
     bool mbAutoDone;
 
 private:
@@ -45,7 +56,7 @@ private:
     std::vector<std::vector<int> > mObstacles;
     std::shared_ptr<Tracking> mpTracker;
     std::shared_ptr<MapDrawer> mpMapDrawer;
-    float mfcLeafSize;
+    float mfcGridSize;
     std::vector<float> mvBounds;
     int mnSizeX;
     int mnSizeY;
@@ -55,14 +66,18 @@ private:
     cv::Mat mTwc;
     std::shared_ptr<std::vector<std::vector<float> > > mpSolution;
     std::shared_ptr<PathPlanning2D> mptPathPlanning;
+    std::shared_ptr<PathPlanning2DXYTheta> mptPathPlanningXYTheta;
     float mfHeightUpperBound;
     float mfHeightLowerBound;
-
+    float mfRobotHalfLength;
+    float mfRobotHalfWidth;
     float mLineWidth;
     float mPointSize;
     std::mutex mMutexObstacle;
     std::mutex mMutexFrame;
     std::mutex mMutexPath;
+    bool mbXYThetaPlan;
+    Eigen::Matrix<int, 2, 4> mRobotCornersUnMoved;
 
 
 

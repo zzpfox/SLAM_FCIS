@@ -130,7 +130,7 @@ bool SBPL2DGridSearch::setOPENdatastructure(SBPL_2DGRIDSEARCH_OPENTYPE OPENtype)
         //this is the default, nothing else needs to be done
         break;
     case SBPL_2DGRIDSEARCH_OPENTYPE_SLIDINGBUCKETS:
-        SBPL_PRINTF("setting OPEN2D data structure to sliding buckets\n");
+        // SBPL_PRINTF("setting OPEN2D data structure to sliding buckets\n");
         if (OPEN2DBLIST_ == NULL) {
             //create sliding buckets
             //compute max distance for edge
@@ -140,10 +140,10 @@ bool SBPL2DGridSearch::setOPENdatastructure(SBPL_2DGRIDSEARCH_OPENTYPE OPENtype)
             }
             int bucketsize = __max(1000, this->width_ + this->height_);
             int numofbuckets = 255 * maxdistance;
-            SBPL_PRINTF("creating sliding bucket-based OPEN2D %d buckets, each bucket of size %d ...", numofbuckets,
-                        bucketsize);
+            // SBPL_PRINTF("creating sliding bucket-based OPEN2D %d buckets, each bucket of size %d ...", numofbuckets,
+            //             bucketsize);
             OPEN2DBLIST_ = new CSlidingBucket(numofbuckets, bucketsize, initial_dynamic_bucket_size_);
-            SBPL_PRINTF("done\n");
+            // SBPL_PRINTF("done\n");
         }
         //delete other data structures
         if (OPEN2D_ != NULL) {
@@ -467,10 +467,10 @@ bool SBPL2DGridSearch::search_withheap(unsigned char** Grid2D, unsigned char obs
 
     free(pbClosed);
 
-    SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
-                "largestoptfval=%d (start=%d %d goal=%d %d)\n",
-                numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
-                searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
+    // SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
+    //             "largestoptfval=%d (start=%d %d goal=%d %d)\n",
+    //             numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
+    //             searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
 
     return true;
 }
@@ -576,10 +576,10 @@ bool SBPL2DGridSearch::search_exp(unsigned char** Grid2D, unsigned char obsthres
     //set lower bounds for the remaining states - none left since we exhausted the whole list
     largestcomputedoptf_ = INFINITECOST;
 
-    SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
-                "largestoptfval=%d (start=%d %d goal=%d %d)\n",
-                numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
-                searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
+    // SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
+    //             "largestoptfval=%d (start=%d %d goal=%d %d)\n",
+    //             numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
+    //             searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
 
     return false;
 }
@@ -691,11 +691,11 @@ bool SBPL2DGridSearch::search_withbuckets(unsigned char** Grid2D, unsigned char 
     else
         largestcomputedoptf_ = INFINITECOST;
 
-    SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
-                "largestoptfval=%d bucketassortedarraymaxsize=%d (start=%d %d goal=%d %d)\n",
-                numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
-                searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, OPEN2DBLIST.maxassortedpriorityVsize,
-                startx_c, starty_c, goalx_c, goaly_c);
+    // SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
+    //             "largestoptfval=%d bucketassortedarraymaxsize=%d (start=%d %d goal=%d %d)\n",
+    //             numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
+    //             searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, OPEN2DBLIST.maxassortedpriorityVsize,
+    //             startx_c, starty_c, goalx_c, goaly_c);
 
     return false;
 }
@@ -781,7 +781,7 @@ bool SBPL2DGridSearch::search_withslidingbuckets(unsigned char** Grid2D, unsigne
     char *pbClosed = (char*)calloc(1, width_ * height_);
 
     //the main repetition of expansions
-    SBPL_PRINTF("2D search with sliding buckets and term_factor=%.3f\n", term_factor);
+    // SBPL_PRINTF("2D search with sliding buckets and term_factor=%.3f\n", term_factor);
     int prevg = 0;
     while (!OPEN2DBLIST_->empty() && search2DGoalState->g > term_factor * OPEN2DBLIST_->getminkey()) {
 #if DEBUG
@@ -867,10 +867,10 @@ bool SBPL2DGridSearch::search_withslidingbuckets(unsigned char** Grid2D, unsigne
     //delete[] pbClosed;
     free(pbClosed);
 
-    SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
-                "largestoptfval=%d (start=%d %d goal=%d %d)\n",
-                numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
-                searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
+    // SBPL_PRINTF( "# of expands during 2dgridsearch=%d time=%d msecs 2Dsolcost_inmm=%d "
+    //             "largestoptfval=%d (start=%d %d goal=%d %d)\n",
+    //             numofExpands, (int)(((clock() - starttime) / (double)CLOCKS_PER_SEC) * 1000),
+    //             searchStates2D_[goalx_c][goaly_c].g, largestcomputedoptf_, startx_c, starty_c, goalx_c, goaly_c);
 
 #if DEBUG
     SBPL_FCLOSE(f2Dsearch);
