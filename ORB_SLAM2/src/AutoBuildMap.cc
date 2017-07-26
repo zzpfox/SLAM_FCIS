@@ -314,8 +314,10 @@ bool AutoBuildMap::PlanPath()
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
             cv::cv2eigen(Rwc, ERwc);
             Eigen::Matrix3f rwc = ERwc;
-            Eigen::Vector3f ea = rwc.eulerAngles(2, 0, 1);
-            start.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+            Eigen::Quaternionf tQua;
+            tQua = rwc;
+            float yaw = 2 * atan2(tQua.y(), tQua.w());
+            start.push_back(yaw);
         }
 
     }
@@ -362,8 +364,10 @@ bool AutoBuildMap::PlanPath(std::vector<float> &target)
             Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ERwc;
             cv::cv2eigen(Rwc, ERwc);
             Eigen::Matrix3f rwc = ERwc;
-            Eigen::Vector3f ea = rwc.eulerAngles(2, 0, 1);
-            start.push_back(-ea(2)); // yaw angle, original y axis is facing downward
+            Eigen::Quaternionf tQua;
+            tQua = rwc;
+            float yaw = 2 * atan2(tQua.y(), tQua.w());
+            start.push_back(yaw);
         }
 
     }
@@ -592,7 +596,7 @@ bool AutoBuildMap::NeedReplanPath()
 
     }
     int obstacleCount = 0;
-    int obstacleCountThreshold = 25;
+    int obstacleCountThreshold = 1;
     for (std::vector<std::vector<float> >::iterator it = mpSolution->begin();
          it != mpSolution->end(); it++) {
         std::vector<int> solutionInGrid;
@@ -605,7 +609,7 @@ bool AutoBuildMap::NeedReplanPath()
                 if (!IsStateValid(solutionInGrid[0], solutionInGrid[1], (*it)[2]));
                 {
                     obstacleCount++;
-                    if (obstacleCount > obstacleCountThreshold)
+                    if (obstacleCount >= obstacleCountThreshold)
                     {
                         std::cout << "possible collision detected ..." << std::endl;
                         return true;

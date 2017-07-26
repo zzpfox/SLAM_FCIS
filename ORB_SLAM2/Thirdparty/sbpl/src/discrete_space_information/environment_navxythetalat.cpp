@@ -777,7 +777,7 @@ bool EnvironmentNAVXYTHETALATTICE::ReadMotionPrimitives(FILE* fMotPrims)
     if (fscanf(fMotPrims, "%s", sTemp) == 0) {
         return false;
     }
-    SBPL_INFO("sTemp: %s\n", sTemp);
+    // SBPL_INFO("sTemp: %s\n", sTemp);
     if (strncmp(sTemp, "min_turning_radius_m:", 21) == 0) {
         bUseNonUniformAngles = true;
     }
@@ -1778,7 +1778,7 @@ void EnvironmentNAVXYTHETALATTICE::EnsureHeuristicsUpdated(bool bGoalHeuristics)
                 EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c,
                 SBPL_2DGRIDSEARCH_TERM_CONDITION_TWOTIMESOPTPATH);
         bNeedtoRecomputeStartHeuristics = false;
-        SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromstart->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
+        // SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromstart->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.EndX_c, EnvNAVXYTHETALATCfg.EndY_c) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
     }
 
     if (bNeedtoRecomputeGoalHeuristics && bGoalHeuristics) {
@@ -1789,7 +1789,7 @@ void EnvironmentNAVXYTHETALATTICE::EnsureHeuristicsUpdated(bool bGoalHeuristics)
                 EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c,
                 SBPL_2DGRIDSEARCH_TERM_CONDITION_TWOTIMESOPTPATH);
         bNeedtoRecomputeGoalHeuristics = false;
-        SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
+        // SBPL_PRINTF("2dsolcost_infullunits=%d\n", (int)(grid2Dsearchfromgoal->getlowerboundoncostfromstart_inmm(EnvNAVXYTHETALATCfg.StartX_c, EnvNAVXYTHETALATCfg.StartY_c) / EnvNAVXYTHETALATCfg.nominalvel_mpersecs));
     }
 }
 

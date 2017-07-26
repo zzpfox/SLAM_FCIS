@@ -68,6 +68,9 @@ Viewer.ViewpointY: -0.7
 Viewer.ViewpointZ: -1.8
 Viewer.ViewpointF: 500
 
+
+GridSize: 0.025
+XYThetaPlan: 1  # 1 means plan in (x, y, theta), 0 means plan in (x, y)
 # Planner used to perform path planning, supported planners are as follows:
 # Sample-based planners:
   # RRTConnect, RRTstar, TRRT, pRRT, SBL, pSBL, 
@@ -78,4 +81,8 @@ PathPlanningPlanner: RRTConnect
 
 AutoBuildMapPathPlanner: adstar
 
-RobotRadius: 20.0
+RobotRadius: 11.0  # the number of grid's width to expand, only needed when planning in (x, y) mode, 
+
+RobotHalfLength: 0.23 #0.28 # only needed when planning in (x, y ,theta) mode
+RobotHalfWidth: 0.23
+

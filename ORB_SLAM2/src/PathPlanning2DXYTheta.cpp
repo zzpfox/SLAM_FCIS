@@ -766,7 +766,7 @@ bool PathPlanning2DXYTheta::SBPLPathPlanning()
     planner->set_initialsolution_eps(initialEpsilon);
 
     int bRet = planner->replan(allocated_time_secs, &solution_stateIDs_V);
-//    std::cout << "size of solution=" << solution_stateIDs_V.size() << std::endl;
+    std::cout << "size of solution=" << solution_stateIDs_V.size() << std::endl;
 
     if (mpSolution) {
         mpSolution->clear();

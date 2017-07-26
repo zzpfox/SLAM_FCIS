@@ -163,7 +163,7 @@ void CHeap::growheap()
     allocated = 2 * allocated;
     if (allocated > HEAPSIZE) allocated = HEAPSIZE;
 
-    SBPL_PRINTF("to %d\n", allocated);
+    // SBPL_PRINTF("to %d\n", allocated);
 
     newheap = new heapelement[allocated];
 
