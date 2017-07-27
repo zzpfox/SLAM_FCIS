@@ -51,12 +51,12 @@ PathPlanning2D::PathPlanning2D(std::string planner, float pointSize,
     msContourFolder = contoursPath.string();
 }
 
-void PathPlanning2D::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+void PathPlanning2D::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     mCloud = cloud;
 }
 
-void PathPlanning2D::AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+void PathPlanning2D::AddPointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     *mCloud += *cloud;
 }
@@ -89,7 +89,7 @@ void PathPlanning2D::reset(bool cleanOccupancyMap)
 
 bool PathPlanning2D::PlanPath(std::vector<float> &start,
                               std::vector<float> &target,
-                              pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                              pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     if (mpSolution) {
         mpSolution->clear();
@@ -112,7 +112,7 @@ bool PathPlanning2D::PlanPath(std::vector<float> &start,
 }
 
 bool PathPlanning2D::PlanPath(std::vector<float> &start,
-                              pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                              pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     if (mpSolution) {
         mpSolution->clear();
@@ -138,7 +138,7 @@ bool PathPlanning2D::PlanPath(std::vector<float> &start,
 
 bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
                                         std::vector<float> &target,
-                                        pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                        pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     UpdatePointCloud(cloud);
     mvStartW = currentPos;
@@ -249,7 +249,7 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
     cv::Mat centroids;
     int nLabels = connectedComponentsWithStats(cvUnSeenAreaGray, labelImage, stats, centroids, 8);
 //    std::cout << "stats \n" << stats << std::endl;
-    int areaThresh = 1600;
+    int areaThresh = 1000;
 
 //    // get all unvisited area
 //    std::unordered_set<int> sLabelOfInterest;
@@ -310,7 +310,7 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &currentPos,
 }
 
 bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &target,
-                                        pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                        pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     UpdatePointCloud(cloud);
     mvStartW = std::vector<float>(2, 0);
@@ -420,7 +420,7 @@ bool PathPlanning2D::UnvisitedAreasToGo(std::vector<float> &target,
     cv::Mat centroids;
     int nLabels = connectedComponentsWithStats(cvUnSeenAreaGray, labelImage, stats, centroids, 8);
 //    std::cout << "stats \n" << stats << std::endl;
-    int areaThresh = 1600;
+    int areaThresh = 1000;
 
 //    // get all unvisited area
 //    std::unordered_set<int> sLabelOfInterest;
@@ -565,6 +565,20 @@ void PathPlanning2D::ShowPlannedPath()
     glBegin(GL_POINTS);
     glColor3f(0.0, 0.0, 1.0);
 
+    for (int i = 0; i < mLethalObstacles.size(); i++) {
+        for (int j = 0; j < mLethalObstacles[0].size(); j++) {
+            if (mLethalObstacles[i][j] == 1) {
+                std::vector<float> tmpPoint;
+                std::vector<int> tmpSrc = {j, i};
+                GridToWorld(tmpSrc, tmpPoint);
+                glVertex3f(tmpPoint[0], 5, tmpPoint[1]);
+            }
+        }
+    }
+    glEnd();
+
+    glBegin(GL_POINTS);
+    glColor3f(0.7, 0.2, 1.0);
     for (int i = 0; i < mObstacles.size(); i++) {
         for (int j = 0; j < mObstacles[0].size(); j++) {
             if (mObstacles[i][j] == 1) {
@@ -1160,6 +1174,8 @@ void PathPlanning2D::GenerateOccupancyMap()
     mObstaclesSeenNum = std::vector<std::vector<int> >(mnSizeY, std::vector<int>(mnSizeX, 0));
     mObstacles.clear();
     mObstacles = std::vector<std::vector<int> >(mnSizeY, std::vector<int>(mnSizeX, 0));
+    mLethalObstacles.clear();
+    mLethalObstacles = std::vector<std::vector<int> >(mnSizeY, std::vector<int>(mnSizeX, 0));
 //    mObstaclesHeight.clear();
 //    mObstaclesHeight =
 //        std::vector<std::vector<float> >(mnSizeY, std::vector<float>(mnSizeX, std::numeric_limits<float>::lowest()));
@@ -1214,7 +1230,10 @@ void PathPlanning2D::GenerateOccupancyMap()
 //        {
 //            mObstacles[nTmpY][nTmpX] = 1;
 //        }
-
+        if (p.y >= -mfUpperBound && p.y <= -mfLowerBound)  // y axis is pointing downward
+        {
+            mLethalObstacles[nTmpY][nTmpX] = 1;
+        }
         for (int i = nTmpX - mfObstacleWidth; i <= nTmpX + mfObstacleWidth; i++) {
             for (int j = nTmpY - mfObstacleWidth; j <= nTmpY + mfObstacleWidth; j++) {
                 if (i >= 0 && i < mnSizeX && j >= 0 && j < mnSizeY) {

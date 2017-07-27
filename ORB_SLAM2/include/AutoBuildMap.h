@@ -30,7 +30,7 @@ public:
     bool CloseToTarget(std::vector<float> &target, float disThresh = 1.4);
     bool GoToStartPosition();
     void EnsureAllAreasChecked();
-    void Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud0,
+    void Get2DBounds(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud0,
                      std::vector<float> &vStart);
     void WorldToGrid(std::vector<float> &input, std::vector<int> &output);
     void GridToWorld(std::vector<int> &input, std::vector<float> &output);
@@ -52,7 +52,7 @@ public:
 
 private:
     System *mpSystem;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr mCloud;
     std::vector<std::vector<int> > mObstacles;
     std::shared_ptr<Tracking> mpTracker;
     std::shared_ptr<MapDrawer> mpMapDrawer;

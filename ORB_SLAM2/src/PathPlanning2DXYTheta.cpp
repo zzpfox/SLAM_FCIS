@@ -56,12 +56,12 @@ PathPlanning2DXYTheta::PathPlanning2DXYTheta(std::string planner, float pointSiz
     msContourFolder = contoursPath.string();
 }
 
-void PathPlanning2DXYTheta::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+void PathPlanning2DXYTheta::UpdatePointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     mCloud = cloud;
 }
 
-void PathPlanning2DXYTheta::AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+void PathPlanning2DXYTheta::AddPointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     *mCloud += *cloud;
 }
@@ -94,7 +94,7 @@ void PathPlanning2DXYTheta::reset(bool cleanOccupancyMap)
 
 bool PathPlanning2DXYTheta::PlanPath(std::vector<float> &start,
                                      std::vector<float> &target,
-                                     pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                     pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     if (mpSolution) {
         mpSolution->clear();
@@ -126,7 +126,7 @@ bool PathPlanning2DXYTheta::PlanPath(std::vector<float> &start,
 }
 
 bool PathPlanning2DXYTheta::PlanPath(std::vector<float> &start,
-                                     pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                     pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     if (mpSolution) {
         mpSolution->clear();
@@ -161,7 +161,7 @@ bool PathPlanning2DXYTheta::PlanPath(std::vector<float> &start,
 
 bool PathPlanning2DXYTheta::UnvisitedAreasToGo(std::vector<float> &currentPos,
                                                std::vector<float> &target,
-                                               pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                               pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     UpdatePointCloud(cloud);
     mvStartW = currentPos;
@@ -338,7 +338,7 @@ bool PathPlanning2DXYTheta::UnvisitedAreasToGo(std::vector<float> &currentPos,
 }
 
 bool PathPlanning2DXYTheta::UnvisitedAreasToGo(std::vector<float> &target,
-                                               pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
+                                               pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
     UpdatePointCloud(cloud);
     mvStartW = std::vector<float>(2, 0);
@@ -638,22 +638,27 @@ bool PathPlanning2DXYTheta::SBPLPathPlanning()
         std::cout << "Cannot find an obstacle-free place near start point" << std::endl;
         return false;
     }
-    if (!GetClosestFreePoint(mvTargetG, 80, mvCandidatesValidTarget)) {
-        std::cout << "Cannot find an obstacle-free place near target point" << std::endl;
-        return false;
-    }
+//    if (!GetClosestFreePoint(mvTargetG, 80, mvCandidatesValidTarget)) {
+//        std::cout << "Cannot find an obstacle-free place near target point" << std::endl;
+//        return false;
+//    }
+    std::vector<float> tmp;
+    tmp.push_back(-1.5);
+    tmp.push_back(-4.5);
+    WorldToGrid(tmp, mvTargetG);
+
     GridToWorld(mvStartG, mvTmpStartW);
     GridToWorld(mvTargetG, mvTmpTargetW);
 
     float deltaX = mvTargetW[0] - mvTmpTargetW[0];
     float deltaY = mvTargetW[1] - mvTmpTargetW[1];
-    float targetYaw = 0;//atan2(deltaY, deltaX);
+    float targetYaw = atan2(deltaY, deltaX);
 
     double allocated_time_secs = 100.0; // in seconds
     double initialEpsilon = 3.0;
     MDPConfig MDPCfg;
     bool bsearchuntilfirstsolution = false;
-    bool bforwardsearch = true;
+    bool bforwardsearch = false;
 
     std::vector<sbpl_2Dpt_t> perimeterptsV;
     sbpl_2Dpt_t pt_m;
@@ -702,8 +707,8 @@ bool PathPlanning2DXYTheta::SBPLPathPlanning()
 
     // in EnvironmentNAVXYTHETALAT, x aligned with the heading of the robot, angles are positive
     EnvironmentNAVXYTHETALAT environment_navxythetalat;
-    double dNominalVelMPerSecs = 0.1;
-    double dTimeToTurn45DegsInPlaceSecs = 5;
+    double dNominalVelMPerSecs = 0.12;
+    double dTimeToTurn45DegsInPlaceSecs = 3.8;
     unsigned char obsthresh = mnCostLethal;
     char *sMotPrimFile = "../../../Thirdparty/sbpl/mprim/slxrobot.mprim";
 

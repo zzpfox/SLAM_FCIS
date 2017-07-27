@@ -22,17 +22,17 @@ public:
 
     bool PlanPath(std::vector<float> &start,
                   std::vector<float> &target,
-                  pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+                  pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
     bool PlanPath(std::vector<float> &start,
-                  pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+                  pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
     bool UnvisitedAreasToGo(std::vector<float> &currentPos,
                             std::vector<float> &target,
-                            pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+                            pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
     bool UnvisitedAreasToGo(std::vector<float> &target,
-                            pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+                            pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
     void ShowPlannedPath();
 
@@ -42,13 +42,13 @@ public:
 
     std::shared_ptr<std::vector<std::vector<float> > > mpSolution;
 
-    void UpdatePointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+    void UpdatePointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
 
 private:
 
 
-    void AddPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+    void AddPointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud);
 
     bool OmplPathPlanning();
 
@@ -76,7 +76,7 @@ private:
     std::vector<float> mvTargetW;
     std::vector<float> mvTmpStartW; //coordinate in world
     std::vector<float> mvTmpTargetW;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr mCloud;
     std::vector<std::vector<int> > mObstacles;
     std::vector<std::vector<int> > mObstaclesInflated;
     std::vector<std::vector<int> > mObstaclesSeenNum;

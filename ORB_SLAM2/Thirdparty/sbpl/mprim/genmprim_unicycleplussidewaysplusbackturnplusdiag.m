@@ -26,7 +26,7 @@
 %  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 %  * POSSIBILITY OF SUCH DAMAGE.
 %  */
-function[] = genmprim_unicycle(outfilename)
+function[] = genmprim_unicycleplussidewaysplusbackturnplusdiag(outfilename)
 
 %
 %generates motion primitives and saves them into file
@@ -41,64 +41,90 @@ UNICYCLE_MPRIM_16DEGS = 1;
 
 resolution = 1.0;
 if UNICYCLE_MPRIM_16DEGS == 1
-   
-        numberofangles = 16; %preferably a power of 2, definitely multiple of 8
-    numberofprimsperangle = 5;
+
+    numberofangles = 16; %preferably a power of 2, definitely multiple of 8
+    numberofprimsperangle = 13;
 
     %multipliers (multiplier is used as costmult*cost)
     forwardcostmult = 1;
-    backwardcostmult = 10;
-    forwardandturncostmult = 2;
-    sidestepcostmult = 10;
+    backwardcostmult = 20;
+    forwardandturncostmult = 20; % 3;
+    sidestepcostmult = 20;
     turninplacecostmult = 1;
-    
-    %note, what is shown x,y,theta changes (not absolute numbers)
-    
+    forwarddiagcostmult = 20; %move forward slightly to the left/right without changing heading
+
+    %note, what is shown x,y,theta *changes* (that is, dx,dy,dtheta and not absolute numbers)
+
     %0 degreees
     basemprimendpts0_c = zeros(numberofprimsperangle, 4); %x,y,theta,costmult 
-    %x aligned with the heading of the robot, angles are positive
-    %counterclockwise
+    %angles are positive counterclockwise
     %0 theta change
     basemprimendpts0_c(1,:) = [1 0 0 forwardcostmult];
     basemprimendpts0_c(2,:) = [8 0 0 forwardcostmult];
     basemprimendpts0_c(3,:) = [-1 0 0 backwardcostmult];    
     %1/16 theta change
-%     basemprimendpts0_c(4,:) = [8 1 1 forwardandturncostmult];
-%     basemprimendpts0_c(5,:) = [8 -1 -1 forwardandturncostmult];
+    basemprimendpts0_c(4,:) = [8 1 1 forwardandturncostmult];
+    basemprimendpts0_c(5,:) = [8 -1 -1 forwardandturncostmult];
     %turn in place
-    basemprimendpts0_c(4,:) = [0 0 1 turninplacecostmult];
-    basemprimendpts0_c(5,:) = [0 0 -1 turninplacecostmult];
+    basemprimendpts0_c(6,:) = [0 0 1 turninplacecostmult];
+    basemprimendpts0_c(7,:) = [0 0 -1 turninplacecostmult];
+    %sideways maintaining the same heading
+    basemprimendpts0_c(8,:) = [0 1 0 sidestepcostmult];
+    basemprimendpts0_c(9,:) = [0 -1 0 sidestepcostmult];
+    %1/16 theta change going backward
+    basemprimendpts0_c(10,:) = [-8 -1 1 backwardcostmult];
+    basemprimendpts0_c(11,:) = [-8 1 -1 backwardcostmult];
+    %forward diagonal
+    basemprimendpts0_c(12,:) = [8 1 0 forwarddiagcostmult];
+    basemprimendpts0_c(13,:) = [8 -1 0 forwarddiagcostmult];
     
     %45 degrees
     basemprimendpts45_c = zeros(numberofprimsperangle, 4); %x,y,theta,costmult (multiplier is used as costmult*cost)
-    %x aligned with the heading of the robot, angles are positive
-    %counterclockwise
+    %angles are positive counterclockwise
     %0 theta change 
     basemprimendpts45_c(1,:) = [1 1 0 forwardcostmult];
     basemprimendpts45_c(2,:) = [6 6 0 forwardcostmult];
     basemprimendpts45_c(3,:) = [-1 -1 0 backwardcostmult];    
     %1/16 theta change
-%     basemprimendpts45_c(4,:) = [5 7 1 forwardandturncostmult];
-%     basemprimendpts45_c(5,:) = [7 5 -1 forwardandturncostmult];    
+    basemprimendpts45_c(4,:) = [5 7 1 forwardandturncostmult];
+    basemprimendpts45_c(5,:) = [7 5 -1 forwardandturncostmult];    
     %turn in place
-    basemprimendpts45_c(4,:) = [0 0 1 turninplacecostmult];
-    basemprimendpts45_c(5,:) = [0 0 -1 turninplacecostmult];
+    basemprimendpts45_c(6,:) = [0 0 1 turninplacecostmult];
+    basemprimendpts45_c(7,:) = [0 0 -1 turninplacecostmult];
+    %sideways maintaining the same heading
+    basemprimendpts45_c(8,:) = [-1 1 0 sidestepcostmult];
+    basemprimendpts45_c(9,:) = [1 -1 0 sidestepcostmult];
+    %1/16 theta change going back
+    basemprimendpts45_c(10,:) = [-5 -7 1 backwardcostmult];
+    basemprimendpts45_c(11,:) = [-7 -5 -1 backwardcostmult];    
+    %forward diagonal
+    basemprimendpts45_c(12,:) = [5 7 0 forwarddiagcostmult];
+    basemprimendpts45_c(13,:) = [7 5 0 forwarddiagcostmult];
     
     %22.5 degrees
     basemprimendpts22p5_c = zeros(numberofprimsperangle, 4); %x,y,theta,costmult (multiplier is used as costmult*cost)
-    %x aligned with the heading of the robot, angles are positive
-    %counterclockwise
+    %angles are positive counterclockwise
     %0 theta change     
     basemprimendpts22p5_c(1,:) = [2 1 0 forwardcostmult];
     basemprimendpts22p5_c(2,:) = [6 3 0 forwardcostmult];    
     basemprimendpts22p5_c(3,:) = [-2 -1 0 backwardcostmult];     
     %1/16 theta change
-%     basemprimendpts22p5_c(4,:) = [5 4 1 forwardandturncostmult];
-%     basemprimendpts22p5_c(5,:) = [7 2 -1 forwardandturncostmult];    
+    basemprimendpts22p5_c(4,:) = [5 4 1 forwardandturncostmult];
+    basemprimendpts22p5_c(5,:) = [7 2 -1 forwardandturncostmult];    
     %turn in place
-    basemprimendpts22p5_c(4,:) = [0 0 1 turninplacecostmult];
-    basemprimendpts22p5_c(5,:) = [0 0 -1 turninplacecostmult];
-        
+    basemprimendpts22p5_c(6,:) = [0 0 1 turninplacecostmult];
+    basemprimendpts22p5_c(7,:) = [0 0 -1 turninplacecostmult];
+    %sideways maintaining the same heading
+    basemprimendpts22p5_c(8,:) = [-1 2 0 sidestepcostmult];
+    basemprimendpts22p5_c(9,:) = [1 -2 0 sidestepcostmult];
+    %1/16 theta change going back
+    basemprimendpts22p5_c(10,:) = [-5 -4 1 backwardcostmult];
+    basemprimendpts22p5_c(11,:) = [-7 -2 -1 backwardcostmult];    
+    %forward diagonal
+    basemprimendpts22p5_c(12,:) = [5 4 0 forwarddiagcostmult];
+    basemprimendpts22p5_c(13,:) = [7 2 0 forwarddiagcostmult];
+
+    
 else
     fprintf(1, 'ERROR: undefined mprims type\n');
     return;    
@@ -134,9 +160,11 @@ for angleind = 1:numberofangles
         if (rem(currentangle_36000int, 9000) == 0)
             basemprimendpts_c = basemprimendpts0_c(primind,:);    
             angle = currentangle;
+            fprintf(1, '90\n');
         elseif (rem(currentangle_36000int, 4500) == 0)
             basemprimendpts_c = basemprimendpts45_c(primind,:);
             angle = currentangle - 45*pi/180;
+            fprintf(1, '45\n');
         elseif (rem(currentangle_36000int-7875, 9000) == 0)
             basemprimendpts_c = basemprimendpts33p75_c(primind,:);
             basemprimendpts_c(1) = basemprimendpts33p75_c(primind, 2); %reverse x and y
@@ -207,7 +235,6 @@ for angleind = 1:numberofangles
                                             0];
                     rotation_angle = (baseendpose_c(3) ) * (2*pi/numberofangles);
                     intermcells_m(iind,3) = rem(startpt(3) + (rotation_angle)*(iind-1)/(numofsamples-1), 2*pi);
-                                                                                    
                 end;            
             else %unicycle-based move forward or backward
                 R = [cos(startpt(3)) sin(endpt(3)) - sin(startpt(3));
@@ -218,7 +245,7 @@ for angleind = 1:numberofangles
                 rv = (baseendpose_c(3)*2*pi/numberofangles + l/tvoverrv);
                 tv = tvoverrv*rv;
                          
-                if l < 0
+                if ((l < 0 & tv > 0) | (l > 0 & tv < 0))
                     fprintf(1, 'WARNING: l = %d < 0 -> bad action start/end points\n', l);
                     l = 0;
                 end;
@@ -237,7 +264,7 @@ for angleind = 1:numberofangles
                     %                        startpt(2) - tv/rv*(cos(dtheta) - cos(startpt(3))) ...
                     %                        dtheta];
                     
-                    if(dt*tv < l)
+                    if(abs(dt*tv) < abs(l))
                         intermcells_m(iind,:) = [startpt(1) + dt*tv*cos(startpt(3)) ...
                                                  startpt(2) + dt*tv*sin(startpt(3)) ...
                                                  startpt(3)];
@@ -273,7 +300,7 @@ for angleind = 1:numberofangles
         
     end;
     grid;
-%     pause;
+    % pause;
 end;
         
 fclose('all');

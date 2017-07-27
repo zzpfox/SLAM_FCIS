@@ -73,6 +73,16 @@ void serialize(Archive &ar, ::pcl::PointXYZ &m, const unsigned int file_version)
     ar & m.z;
 }
 
+template<typename Archive>
+void serialize(Archive &ar, ::pcl::PointXYZRGB &m, const unsigned int file_version)
+{
+    ar & m.x;
+    ar & m.y;
+    ar & m.z;
+    ar & m.r;
+    ar & m.g;
+    ar & m.b;
+}
 
 template<typename Archive>
 void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int file_version)
@@ -187,6 +197,9 @@ template void serialize<BoostBinIar>(BoostBinIar &, ::cv::KeyPoint &, const unsi
 
 template void serialize<BoostBinOar>(BoostBinOar &, ::pcl::PointXYZ &, const unsigned int);
 template void serialize<BoostBinIar>(BoostBinIar &, ::pcl::PointXYZ &, const unsigned int);
+
+template void serialize<BoostBinOar>(BoostBinOar &, ::pcl::PointXYZRGB &, const unsigned int);
+template void serialize<BoostBinIar>(BoostBinIar &, ::pcl::PointXYZRGB &, const unsigned int);
 
 template void serialize<BoostBinOar>(BoostBinOar &, ::ORB_SLAM2::KeyFrame &, const unsigned int);
 template void serialize<BoostBinIar>(BoostBinIar &, ::ORB_SLAM2::KeyFrame &, const unsigned int);

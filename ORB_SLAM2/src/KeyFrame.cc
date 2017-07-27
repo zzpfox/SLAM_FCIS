@@ -97,9 +97,9 @@ KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame
     ss << msDepthImagesFolder << "/KeyFrame-" << std::setw(8) << std::setfill('0') << mnId << ".bin";
     mPointCloudName = ss.str();
 //    cv::imwrite(mDepthImageName.c_str(), imDepth);
-
-    std::vector<pcl::PointXYZ, Eigen::aligned_allocator<pcl::PointXYZ> > points;
-    pcl::PointXYZ point;
+    std::vector<pcl::PointXYZRGB, Eigen::aligned_allocator<pcl::PointXYZRGB> > points;
+//    std::vector<pcl::PointXYZ, Eigen::aligned_allocator<pcl::PointXYZ> > points;
+    pcl::PointXYZRGB point;
     int imgStep = 3;
     for (int r = 0; r < F.mImDepth.rows; r += imgStep) {
         const float *itD = F.mImDepth.ptr<float>(r);
@@ -107,13 +107,17 @@ KeyFrame::KeyFrame(Frame &F, std::shared_ptr<Map> pMap, std::shared_ptr<KeyFrame
         const float *itX = smpMap->mLookupX.ptr<float>();
         for (size_t c = 0; c < (size_t) F.mImDepth.cols; c += imgStep, itD += imgStep, itX += imgStep) {
             float depthValue = *itD;
-            if (depthValue > 0.1 && depthValue < 10.0) {
+            if (depthValue > 0.5 && depthValue < 8.0) {
                 float zc = depthValue;
                 float xc = *itX * depthValue;
                 float yc = y * depthValue;
                 point.x = xc;
                 point.y = yc;
                 point.z = zc;
+                point.b = F.mImColor.at<cv::Vec3b>(r, c)[0];
+                point.g = F.mImColor.at<cv::Vec3b>(r, c)[1];
+                point.r = F.mImColor.at<cv::Vec3b>(r, c)[2];
+
                 points.push_back(point);
             }
         }

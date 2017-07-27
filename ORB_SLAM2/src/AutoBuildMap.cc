@@ -96,6 +96,7 @@ void AutoBuildMap::Run()
 //            }
         }
     }
+    mObstacles.clear();
     std::cout << "\x1B[36m" << "Stop building map automatically" << "\x1B[0m" << std::endl;
 
 }
@@ -237,7 +238,7 @@ bool AutoBuildMap::GoToStartPosition()
         else {
             UpdateSolution(mptPathPlanning->mpSolution);
         }
-        while (!CloseToTarget(target, 0.7)) {
+        while (!CloseToTarget(target, 0.3)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             if (NeedReplanPath()) {
                 if (!PlanPath(target)) {
@@ -256,7 +257,7 @@ bool AutoBuildMap::GoToStartPosition()
         std::chrono::time_point<std::chrono::system_clock> end;
         start = std::chrono::system_clock::now();
         bool noLoopDetected = false;
-        double maxWaitTime = 20;
+        double maxWaitTime = 90;
         // wait for global BA
         while (!mpSystem->mpLoopCloser->mbRunningGBA) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -343,7 +344,7 @@ bool AutoBuildMap::PlanPath()
 bool AutoBuildMap::PlanPath(std::vector<float> &target)
 {
     std::cout << "Planning a new path ... " << std::endl;
-//    mpMapDrawer->CalPointCloud();
+    mpMapDrawer->CalPointCloud();
     float fCameraCenterX = 0;
     float fCameraCenterZ = 0;
     std::vector<float> start;
@@ -470,17 +471,17 @@ bool AutoBuildMap::NeedReplanPath()
         vTargetW = mptPathPlanning->GetTargetW();
     }
 
-    float fToTargetX = vTargetW[0] - fCameraCenterX;
-    float fToTargetZ = vTargetW[1] - fCameraCenterZ;
-    float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
-    if (fToTargetDistanceSquared < 0.25) // if the camera is close to the target, replan
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        std::cout << "close to target " << std::endl;
-        return true;
-    }
-    pcl::PointCloud<pcl::PointXYZ>::Ptr pCurrentFrameCloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::PointXYZ point;
+//    float fToTargetX = vTargetW[0] - fCameraCenterX;
+//    float fToTargetZ = vTargetW[1] - fCameraCenterZ;
+//    float fToTargetDistanceSquared = pow(fToTargetX, 2.0) + pow(fToTargetZ, 2.0);
+//    if (fToTargetDistanceSquared < 0.25) // if the camera is close to the target, replan
+//    {
+//        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+//        std::cout << "close to target " << std::endl;
+//        return true;
+//    }
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr pCurrentFrameCloud(new pcl::PointCloud<pcl::PointXYZRGB>());
+    pcl::PointXYZRGB point;
     int imgStep = 3;
     Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> ETwc;
     cv::cv2eigen(Twc, ETwc);
@@ -491,7 +492,7 @@ bool AutoBuildMap::NeedReplanPath()
         for (size_t c = 0; c < (size_t) depthIm.cols;
              c += imgStep, itD += imgStep, itX += imgStep) {
             float depthValue = *itD;
-            if (depthValue > 0.2 && depthValue < 3.0) {
+            if (depthValue > 0.5 && depthValue < 3.0) {
                 float zc = depthValue;
                 float xc = *itX * depthValue;
                 float yc = y * depthValue;
@@ -516,12 +517,12 @@ bool AutoBuildMap::NeedReplanPath()
     std::vector<int> indices;
     pcl::removeNaNFromPointCloud(*pCurrentFrameCloud, *pCurrentFrameCloud, indices);
 //    cout << "Current Frame Cloud Size after NaN Removal:" << pCurrentFrameCloud->points.size() << endl;
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZRGB>);
 
     // voxel filter
-    pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
+    pcl::VoxelGrid<pcl::PointXYZRGB> voxelFilter;
     voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
     voxelFilter.setInputCloud(pCurrentFrameCloud);
     voxelFilter.filter(*cloudVoxel);
@@ -565,7 +566,7 @@ bool AutoBuildMap::NeedReplanPath()
 
 
     // statistical removal
-    pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor;
     sor.setMeanK(15);
     sor.setStddevMulThresh(1.0);
     sor.setInputCloud(cloudIQRFilter);
@@ -577,7 +578,8 @@ bool AutoBuildMap::NeedReplanPath()
     {
         unique_lock<mutex> lock(mMutexObstacle);
         mObstacles = std::vector<std::vector<int> >(mnSizeY, std::vector<int>(mnSizeX, 0));
-        double radius = mbXYThetaPlan ? std::min(mfRobotHalfLength, mfRobotHalfWidth) / mfcGridSize : mfObstacleWidth;
+//        double radius = mbXYThetaPlan ? std::min(mfRobotHalfLength, mfRobotHalfWidth) / mfcGridSize : mfObstacleWidth;
+        double radius = mbXYThetaPlan ? 0.0 : mfObstacleWidth;
         double radiusSquared = pow(radius, 2.0);
         for (auto p : pCurrentFrameCloud->points) {
             int nTmpX = static_cast<int>((p.x - mvBounds[0]) / mfcGridSize);
@@ -596,7 +598,7 @@ bool AutoBuildMap::NeedReplanPath()
 
     }
     int obstacleCount = 0;
-    int obstacleCountThreshold = 1;
+    int obstacleCountThreshold = 3;
     for (std::vector<std::vector<float> >::iterator it = mpSolution->begin();
          it != mpSolution->end(); it++) {
         std::vector<int> solutionInGrid;
@@ -691,7 +693,7 @@ void AutoBuildMap::CalGridSize()
     mnSizeY = static_cast<int> ((mvBounds[3] - mvBounds[2]) / mfcGridSize);
 }
 
-void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, std::vector<float> &vStart)
+void AutoBuildMap::Get2DBounds(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud, std::vector<float> &vStart)
 {
     mvBounds[0] = std::numeric_limits<float>::max();
     mvBounds[1] = std::numeric_limits<float>::lowest();

@@ -26,6 +26,7 @@ class KeyPoint;
 namespace pcl
 {
 class PointXYZ;
+class PointXYZRGB;
 }
 
 namespace boost
@@ -48,6 +49,9 @@ void serialize(Archive &ar, ::cv::KeyPoint &p, const unsigned int file_version);
 
 template<typename Archive>
 void serialize(Archive &ar, ::pcl::PointXYZ &m, const unsigned int file_version);
+
+template<typename Archive>
+void serialize(Archive &ar, ::pcl::PointXYZRGB &m, const unsigned int file_version);
 
 template<typename Archive>
 void serialize(Archive &ar, ::ORB_SLAM2::KeyFrame &keyframe, const unsigned int file_version);

@@ -26,6 +26,8 @@
 #include <ctime>
 #include<ros/ros.h>
 #include <cv_bridge/cv_bridge.h>
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -156,10 +158,23 @@ void ImageGrabber::GrabRGBD(const sensor_msgs::ImageConstPtr &msgRGB, const sens
 //    for (int i = 0; i < 500; i++)
 //    {
 //        std::vector<float> tmpPoint;
-//        float x = i / 500.0 * 1.0;
-//        float z = -i / 500.0 * 1.0 / 1.732;
+//        float x = -i / 500.0 * 1.0;
+//        float z = i / 500.0 * 1.0 / 1.732;
 //        tmpPoint.push_back(x);
 //        tmpPoint.push_back(z);
+//        float theta = 3.1415026 / 3;
+//        tmpPoint.push_back(theta);
+//        path.push_back(tmpPoint);
+//    }
+//    for (int i = 0; i < 500; i++)
+//    {
+//        std::vector<float> tmpPoint;
+//        float x = i / 500.0 - 1.0;
+//        float z = 1.0 / 1.732;
+//        tmpPoint.push_back(x);
+//        tmpPoint.push_back(z);
+//        float theta = -3.1415026 / 2;
+//        tmpPoint.push_back(theta);
 //        path.push_back(tmpPoint);
 //    }
 //    PublishPath(path);
@@ -193,6 +208,7 @@ void ImageGrabber::PublishPath(std::vector<std::vector<float> > &path)
     geometry_msgs::PoseArray poseArrayMSG;
     if (path.size() > 0)
     {
+        bool bPathWithOrientation = path[0].size() > 2;
         poseArrayMSG.header.frame_id = "planned_path";
         poseArrayMSG.header.stamp = ros::Time::now();
         for (int i = 0; i < path.size(); i++)
@@ -201,10 +217,27 @@ void ImageGrabber::PublishPath(std::vector<std::vector<float> > &path)
             tmpPose.position.x = path[i][0];
             tmpPose.position.y = 0;
             tmpPose.position.z = path[i][1];
-            tmpPose.orientation.x = 1;
-            tmpPose.orientation.y = 0;
-            tmpPose.orientation.z = 0;
-            tmpPose.orientation.w = 0;
+            if (bPathWithOrientation)
+            {
+                Eigen::Vector3d axis;
+                axis << 0, -1, 0;
+
+                Eigen::AngleAxisd yRot(path[i][2], axis);
+                Eigen::Quaterniond q;
+                q = yRot;
+                tmpPose.orientation.x = q.x();
+                tmpPose.orientation.y = q.y();
+                tmpPose.orientation.z = q.z();
+                tmpPose.orientation.w = q.w();
+            }
+            else
+            {
+                tmpPose.orientation.x = -1;
+                tmpPose.orientation.y = -1;
+                tmpPose.orientation.z = -1;
+                tmpPose.orientation.w = -1;
+            }
+
             poseArrayMSG.poses.push_back(tmpPose);
         }
         mPathPub.publish(poseArrayMSG);

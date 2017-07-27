@@ -47,13 +47,13 @@ public:
     bool mbFindObjCalPoints;
     std::unique_ptr<std::thread> mpThreadOctomap;
     static std::string msPointCloudPath;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr mCloud;
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr mCloud;
     std::shared_ptr<PathPlanning2D> mPathPlanning;
     std::shared_ptr<PathPlanning2DXYTheta> mPathPlanningXYTheta;
 
 
     void GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
-                            pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                            pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,
                             int begin, int step);
 
     void FindObjects();
@@ -81,8 +81,8 @@ public:
                             std::vector<std::vector<float> > &solution,
                             std::vector<std::vector<int> > &mObstacles);
 
-    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                          pcl::PointCloud<pcl::PointXYZ>::Ptr output);
+    void FilterPointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,
+                          pcl::PointCloud<pcl::PointXYZRGB>::Ptr output);
 
     void clear();
 
@@ -114,7 +114,7 @@ public:
 
     void GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M);
 
-    void BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud);
+    void BuildOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud);
 
     void SaveDenseMapToPCD();
 

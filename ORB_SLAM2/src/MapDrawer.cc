@@ -54,7 +54,7 @@ namespace ORB_SLAM2
 std::string MapDrawer::msPointCloudPath = "./Data/PointCloud";
 MapDrawer::MapDrawer(std::shared_ptr<Map> pMap, const string &strSettingPath)
     : mpMap(pMap),
-      mCloud(new pcl::PointCloud<pcl::PointXYZ>()),
+      mCloud(new pcl::PointCloud<pcl::PointXYZRGB>()),
       mfHeightUpperBound(1.0),
       mfHeightLowerBound(-0.2),
       mbXYThetaPlan(false)
@@ -125,11 +125,15 @@ void MapDrawer::DrawPointCloud()
     }
     glPointSize(mPointSize);
     glBegin(GL_POINTS);
-    glColor3f(1.0, 0.0, 1.0);
+
     for (auto p : mCloud->points) {
 //        if (p.y >= -mfHeightUpperBound && p.y <= -mfHeightLowerBound)
         if (p.y >= -mfHeightUpperBound && p.y <= 2.0)
         {
+            float r = p.r / 255.0;
+            float g = p.g / 255.0;
+            float b = p.b / 255.0;
+            glColor3f(r, g, b);
             glVertex3f(p.x, p.y, p.z);
         }
     }
@@ -142,7 +146,7 @@ void MapDrawer::CalPointCloud(bool saveOctoMap)
     std::chrono::time_point<std::chrono::system_clock> start;
     std::chrono::time_point<std::chrono::system_clock> end;
     start = std::chrono::system_clock::now();
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
 
     vector<std::shared_ptr<KeyFrame> > vpKFs = mpMap->GetAllKeyFrames();
     int sampleFrequency = 2;
@@ -153,10 +157,10 @@ void MapDrawer::CalPointCloud(bool saveOctoMap)
     }
     int numThreads = 3;
     std::thread threads[numThreads];
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> clouds;
+    std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> clouds;
     for (int i = 0; i < numThreads; i++)
     {
-        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGB>());
         clouds.push_back(tmp);
     }
     for (int i = 0; i < numThreads; i++) {
@@ -344,22 +348,22 @@ void MapDrawer::FindObjects()
         if (fToTargetDistance < 0.5)
         {
             bool clearPath = true;
-            if (mbXYThetaPlan)
-            {
-                float fToTargetAngle = cameraCenter[2] - mpSolution->back()[2];
-                while (fToTargetAngle < -M_PI)
-                {
-                    fToTargetAngle += 2 * M_PI;
-                }
-                while (fToTargetAngle > M_PI)
-                {
-                    fToTargetAngle -= 2 * M_PI;
-                }
-                if (fabs(fToTargetAngle) > 0.2)
-                {
-                    clearPath = false;
-                }
-            }
+//            if (mbXYThetaPlan)
+//            {
+//                float fToTargetAngle = cameraCenter[2] - mpSolution->back()[2];
+//                while (fToTargetAngle < -M_PI)
+//                {
+//                    fToTargetAngle += 2 * M_PI;
+//                }
+//                while (fToTargetAngle > M_PI)
+//                {
+//                    fToTargetAngle -= 2 * M_PI;
+//                }
+//                if (fabs(fToTargetAngle) > 0.2)
+//                {
+//                    clearPath = false;
+//                }
+//            }
             if (clearPath)
             {
                 std::cout << "\x1B[35m" << "Fetch object: close to target,  distance: " << fToTargetDistance
@@ -476,7 +480,7 @@ void MapDrawer::UpdateSolution(std::shared_ptr<std::vector<std::vector<float> > 
 //}
 
 void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpKFs,
-                                   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                                   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,
                                    int begin,
                                    int step)
 {
@@ -488,7 +492,7 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
         std::stringstream ss;
         ss << msPointCloudPath << "/KeyFrame-" << std::setw(8) << std::setfill('0') << pKF->mnId << ".bin";
         std::string pointCloudName = ss.str();
-        std::vector<pcl::PointXYZ, Eigen::aligned_allocator<pcl::PointXYZ> > points;
+        std::vector<pcl::PointXYZRGB, Eigen::aligned_allocator<pcl::PointXYZRGB> > points;
         std::ifstream is(pointCloudName);
         if (is)
         {
@@ -502,7 +506,7 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
         for (int j = 0; j < points.size(); j++)
         {
             float xx, yy, zz;
-            pcl::PointXYZ tmpPoint = points[j];
+            pcl::PointXYZRGB tmpPoint = points[j];
 
             cv::Mat Twc = pKF->GetPoseInverse();
             Eigen::Matrix<float,Eigen::Dynamic,Eigen::Dynamic> ETwc;
@@ -527,14 +531,18 @@ void MapDrawer::GeneratePointCloud(const vector<std::shared_ptr<KeyFrame> > &vpK
 //            yy = itY[0] * tmpPoint.x + itY[1] * tmpPoint.y + itY[2] * tmpPoint.z + itY[3];
 //            float *itZ =  Twc.ptr<float>(2);
 //            zz = itZ[0] * tmpPoint.x + itZ[1] * tmpPoint.y + itZ[2] * tmpPoint.z + itZ[3];
-            pcl::PointXYZ point;
+            pcl::PointXYZRGB point;
             point.x = xx;
             point.y = yy;
             point.z = zz;
+            point.r = tmpPoint.r;
+            point.g = tmpPoint.g;
+            point.b = tmpPoint.b;
+            unique_lock<mutex> lock(mMutexCloud);
             cloud->points.push_back(point);
 //            if (yy >= -mfHeightUpperBound && yy <= -mfHeightLowerBound)
 //            {
-//                pcl::PointXYZ point;
+//                pcl::PointXYZRGB point;
 //                point.x = xx;
 //                point.y = yy;
 //                point.z = zz;
@@ -607,9 +615,9 @@ void MapDrawer::SaveDenseMapToSTL()
 {
     CalPointCloud();
     // Normal estimation*
-//    pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+//    pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> n;
 //    pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
-//    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+//    pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
 //    tree->setInputCloud (mCloud);
 //    n.setInputCloud (mCloud);
 //    n.setSearchMethod (tree);
@@ -625,13 +633,13 @@ void MapDrawer::SaveDenseMapToSTL()
 
 
     // Create a KD-Tree
-    pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+    pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
 
     // Output has the PointNormal type in order to store the normals calculated by MLS
     pcl::PointCloud<pcl::PointNormal>::Ptr mls_points(new pcl::PointCloud<pcl::PointNormal>);
 
     // Init object (second point type is for the normals, even if unused)
-    pcl::MovingLeastSquares<pcl::PointXYZ, pcl::PointNormal> mls;
+    pcl::MovingLeastSquares<pcl::PointXYZRGB, pcl::PointNormal> mls;
 
     mls.setComputeNormals (true);
 
@@ -701,9 +709,9 @@ void MapDrawer::SaveDenseMapToSTL()
 }
 
 
-void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud)
 {
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZRGB>::Ptr output(new pcl::PointCloud<pcl::PointXYZRGB>);
 //    {
 //        unique_lock<mutex> lock(mMutexMCloud);
 //        if (cloud->points.size() > 0)
@@ -730,19 +738,19 @@ void MapDrawer::BuildOctomap(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 }
 
 void
-MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                            pcl::PointCloud<pcl::PointXYZ>::Ptr output)
+MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,
+                            pcl::PointCloud<pcl::PointXYZRGB>::Ptr output)
 {
     cout << "Original Cloud Size:" << cloud->points.size() << endl;
     std::vector<int> indices;
     pcl::removeNaNFromPointCloud(*cloud, *cloud, indices);
     cout << "Cloud Size after NaN Removal:" << cloud->points.size() << endl;
-//    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZ>);
+//    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudRandomFilter(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudIQRFilter(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloudVoxel(new pcl::PointCloud<pcl::PointXYZRGB>);
 
 //    int n_points = cloud->points.size() * sampleRatio;
-//    pcl::RandomSample<pcl::PointXYZ> randomFilter;
+//    pcl::RandomSample<pcl::PointXYZRGB> randomFilter;
 //    randomFilter.setSample(n_points);
 //    randomFilter.setInputCloud(cloud);
 //    randomFilter.filter(*cloudRandomFilter);
@@ -750,7 +758,7 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 
 
     // voxel filter
-    pcl::VoxelGrid<pcl::PointXYZ> voxelFilter;
+    pcl::VoxelGrid<pcl::PointXYZRGB> voxelFilter;
     voxelFilter.setLeafSize(0.03f, 0.03f, 0.03f);       // resolution
     voxelFilter.setInputCloud(cloud);
     voxelFilter.filter(*cloudVoxel);
@@ -799,9 +807,9 @@ MapDrawer::FilterPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     }
 
     // statistical removal
-    pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor;
     sor.setMeanK(15);
-    sor.setStddevMulThresh(1.0);
+    sor.setStddevMulThresh(0.8);
     sor.setInputCloud(cloudIQRFilter);
     sor.filter(*output);
     cout << "Cloud Size After Statistical Filter:" << output->points.size() << endl;
@@ -1111,7 +1119,7 @@ void MapDrawer::GetCurrentOpenGLCameraMatrix(pangolin::OpenGlMatrix &M)
 
 void MapDrawer::clear()
 {
-    mCloud.reset(new pcl::PointCloud<pcl::PointXYZ>());
+    mCloud.reset(new pcl::PointCloud<pcl::PointXYZRGB>());
 }
 
 void MapDrawer::CloseOctoMapThread()
